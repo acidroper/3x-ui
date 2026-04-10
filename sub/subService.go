@@ -407,7 +407,16 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		}
 		params["mode"] = xhttp["mode"].(string)
 		if clients[clientIndex].Extra != "" {
-			params["extra"] = clients[clientIndex].Extra
+			var extraObj any
+			if err := json.Unmarshal([]byte(clients[clientIndex].Extra), &extraObj); err == nil {
+				if compacted, err := json.Marshal(extraObj); err == nil {
+					params["extra"] = string(compacted)
+				} else {
+					params["extra"] = clients[clientIndex].Extra
+				}
+			} else {
+				params["extra"] = clients[clientIndex].Extra
+			}
 		}
 	}
 	security, _ := stream["security"].(string)

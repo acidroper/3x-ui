@@ -1466,10 +1466,12 @@ class Inbound extends XrayCommonClass {
                 params.set("host", xhttp.host?.length > 0 ? xhttp.host : this.getHeader(xhttp, 'host'));
                 params.set("mode", xhttp.mode);
                 if (extra && extra.trim() !== "") {
-                    // xray handles it but let's make sure it's valid json structure.
-                    // The client already inputs it or handles it.
-                    // We just pass the string.
-                    params.set("extra", extra.trim());
+                    // remove spaces and newlines from json
+                    try {
+                        params.set("extra", JSON.stringify(JSON.parse(extra)));
+                    } catch (e) {
+                        params.set("extra", extra.trim().replace(/\s+/g, ''));
+                    }
                 }
                 break;
         }
