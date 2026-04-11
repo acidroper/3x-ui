@@ -528,12 +528,12 @@ class xHTTPStreamSettings extends XrayCommonClass {
         this.uplinkChunkSize = uplinkChunkSize;
         this.xmuxEnabled = xmuxEnabled;
         this.xmux = {
-            maxConcurrency: xmux.maxConcurrency ?? "16-32",
-            maxConnections: xmux.maxConnections ?? 0,
-            cMaxReuseTimes: xmux.cMaxReuseTimes ?? "64-128",
-            hMaxRequestTimes: xmux.hMaxRequestTimes ?? "700-900",
-            hMaxReusableSecs: xmux.hMaxReusableSecs ?? "1800-3000",
-            hKeepAlivePeriod: xmux.hKeepAlivePeriod ?? 0,
+            maxConcurrency: xmux.maxConcurrency ?? '',
+            maxConnections: xmux.maxConnections ?? '',
+            cMaxReuseTimes: xmux.cMaxReuseTimes ?? '',
+            hMaxRequestTimes: xmux.hMaxRequestTimes ?? '',
+            hMaxReusableSecs: xmux.hMaxReusableSecs ?? '',
+            hKeepAlivePeriod: xmux.hKeepAlivePeriod ?? '',
         };
     }
 
@@ -574,25 +574,29 @@ class xHTTPStreamSettings extends XrayCommonClass {
         );
     }
 
-    // Build the extra JSON object from xmux settings, optionally merged with client overrides
+    // Build the extra JSON object from xmux settings, only including explicitly set fields
     buildExtraJson(clientXmux = null) {
         if (!this.xmuxEnabled && !clientXmux) return '';
-        const base = this.xmuxEnabled ? { ...this.xmux } : {
-            maxConcurrency: "16-32",
-            maxConnections: 0,
-            cMaxReuseTimes: "64-128",
-            hMaxRequestTimes: "700-900",
-            hMaxReusableSecs: "1800-3000",
-            hKeepAlivePeriod: 0,
-        };
-        if (clientXmux) {
-            for (const key of Object.keys(base)) {
-                if (clientXmux[key] !== undefined && clientXmux[key] !== '' && clientXmux[key] !== null) {
-                    base[key] = clientXmux[key];
+        const fields = ['maxConcurrency', 'maxConnections', 'cMaxReuseTimes', 'hMaxRequestTimes', 'hMaxReusableSecs', 'hKeepAlivePeriod'];
+        const xmux = {};
+        // Apply inbound-level values (only non-empty)
+        if (this.xmuxEnabled) {
+            for (const key of fields) {
+                if (this.xmux[key] !== undefined && this.xmux[key] !== '') {
+                    xmux[key] = this.xmux[key];
                 }
             }
         }
-        return JSON.stringify({ xmux: base });
+        // Apply client-level overrides (only non-empty)
+        if (clientXmux) {
+            for (const key of fields) {
+                if (clientXmux[key] !== undefined && clientXmux[key] !== '' && clientXmux[key] !== null) {
+                    xmux[key] = clientXmux[key];
+                }
+            }
+        }
+        if (Object.keys(xmux).length === 0) return '';
+        return JSON.stringify({ xmux });
     }
 
     toJson() {

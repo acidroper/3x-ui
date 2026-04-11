@@ -413,21 +413,17 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 		client := clients[clientIndex]
 
 		if xmuxEnabled || (client.XmuxOverride != nil && client.XmuxOverride.XmuxOverride) {
-			xmux := map[string]any{
-				"maxConcurrency":   "16-32",
-				"maxConnections":   0,
-				"cMaxReuseTimes":   "64-128",
-				"hMaxRequestTimes": "700-900",
-				"hMaxReusableSecs": "1800-3000",
-				"hKeepAlivePeriod": 0,
-			}
-			// Apply inbound-level xmux defaults
+			xmux := map[string]any{}
+			// Apply inbound-level xmux values (only non-empty)
 			if xmuxEnabled && xmuxSettings != nil {
 				for k, v := range xmuxSettings {
+					if str, ok := v.(string); ok && str == "" {
+						continue
+					}
 					xmux[k] = v
 				}
 			}
-			// Apply client-level overrides
+			// Apply client-level overrides (only non-empty)
 			if client.XmuxOverride != nil && client.XmuxOverride.XmuxOverride {
 				if client.XmuxOverride.MaxConcurrency != "" {
 					xmux["maxConcurrency"] = client.XmuxOverride.MaxConcurrency
@@ -448,9 +444,11 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 					xmux["hKeepAlivePeriod"] = client.XmuxOverride.HKeepAlivePeriod
 				}
 			}
-			extra := map[string]any{"xmux": xmux}
-			if extraBytes, err := json.Marshal(extra); err == nil {
-				params["extra"] = string(extraBytes)
+			if len(xmux) > 0 {
+				extra := map[string]any{"xmux": xmux}
+				if extraBytes, err := json.Marshal(extra); err == nil {
+					params["extra"] = string(extraBytes)
+				}
 			}
 		}
 	}
