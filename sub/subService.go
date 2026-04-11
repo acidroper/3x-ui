@@ -406,16 +406,51 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			params["host"] = searchHost(headers)
 		}
 		params["mode"] = xhttp["mode"].(string)
-		if clients[clientIndex].Extra != "" {
-			var extraObj any
-			if err := json.Unmarshal([]byte(clients[clientIndex].Extra), &extraObj); err == nil {
-				if compacted, err := json.Marshal(extraObj); err == nil {
-					params["extra"] = string(compacted)
-				} else {
-					params["extra"] = clients[clientIndex].Extra
+
+		// Build extra from inbound-level xmux defaults + client-level overrides
+		xmuxEnabled, _ := xhttp["xmuxEnabled"].(bool)
+		xmuxSettings, _ := xhttp["xmux"].(map[string]any)
+		client := clients[clientIndex]
+
+		if xmuxEnabled || (client.XmuxOverride != nil && client.XmuxOverride.XmuxOverride) {
+			xmux := map[string]any{
+				"maxConcurrency":   "16-32",
+				"maxConnections":   0,
+				"cMaxReuseTimes":   "64-128",
+				"hMaxRequestTimes": "700-900",
+				"hMaxReusableSecs": "1800-3000",
+				"hKeepAlivePeriod": 0,
+			}
+			// Apply inbound-level xmux defaults
+			if xmuxEnabled && xmuxSettings != nil {
+				for k, v := range xmuxSettings {
+					xmux[k] = v
 				}
-			} else {
-				params["extra"] = clients[clientIndex].Extra
+			}
+			// Apply client-level overrides
+			if client.XmuxOverride != nil && client.XmuxOverride.XmuxOverride {
+				if client.XmuxOverride.MaxConcurrency != "" {
+					xmux["maxConcurrency"] = client.XmuxOverride.MaxConcurrency
+				}
+				if client.XmuxOverride.MaxConnections != "" {
+					xmux["maxConnections"] = client.XmuxOverride.MaxConnections
+				}
+				if client.XmuxOverride.CMaxReuseTimes != "" {
+					xmux["cMaxReuseTimes"] = client.XmuxOverride.CMaxReuseTimes
+				}
+				if client.XmuxOverride.HMaxRequestTimes != "" {
+					xmux["hMaxRequestTimes"] = client.XmuxOverride.HMaxRequestTimes
+				}
+				if client.XmuxOverride.HMaxReusableSecs != "" {
+					xmux["hMaxReusableSecs"] = client.XmuxOverride.HMaxReusableSecs
+				}
+				if client.XmuxOverride.HKeepAlivePeriod != "" {
+					xmux["hKeepAlivePeriod"] = client.XmuxOverride.HKeepAlivePeriod
+				}
+			}
+			extra := map[string]any{"xmux": xmux}
+			if extraBytes, err := json.Marshal(extra); err == nil {
+				params["extra"] = string(extraBytes)
 			}
 		}
 	}

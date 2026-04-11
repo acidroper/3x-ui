@@ -500,6 +500,8 @@ class xHTTPStreamSettings extends XrayCommonClass {
         uplinkDataPlacement = '',
         uplinkDataKey = '',
         uplinkChunkSize = 0,
+        xmuxEnabled = false,
+        xmux = {},
     ) {
         super();
         this.path = path;
@@ -524,6 +526,15 @@ class xHTTPStreamSettings extends XrayCommonClass {
         this.uplinkDataPlacement = uplinkDataPlacement;
         this.uplinkDataKey = uplinkDataKey;
         this.uplinkChunkSize = uplinkChunkSize;
+        this.xmuxEnabled = xmuxEnabled;
+        this.xmux = {
+            maxConcurrency: xmux.maxConcurrency ?? "16-32",
+            maxConnections: xmux.maxConnections ?? 0,
+            cMaxReuseTimes: xmux.cMaxReuseTimes ?? "64-128",
+            hMaxRequestTimes: xmux.hMaxRequestTimes ?? "700-900",
+            hMaxReusableSecs: xmux.hMaxReusableSecs ?? "1800-3000",
+            hKeepAlivePeriod: xmux.hKeepAlivePeriod ?? 0,
+        };
     }
 
     addHeader(name, value) {
@@ -558,7 +569,30 @@ class xHTTPStreamSettings extends XrayCommonClass {
             json.uplinkDataPlacement,
             json.uplinkDataKey,
             json.uplinkChunkSize,
+            json.xmuxEnabled ?? false,
+            json.xmux ?? {},
         );
+    }
+
+    // Build the extra JSON object from xmux settings, optionally merged with client overrides
+    buildExtraJson(clientXmux = null) {
+        if (!this.xmuxEnabled && !clientXmux) return '';
+        const base = this.xmuxEnabled ? { ...this.xmux } : {
+            maxConcurrency: "16-32",
+            maxConnections: 0,
+            cMaxReuseTimes: "64-128",
+            hMaxRequestTimes: "700-900",
+            hMaxReusableSecs: "1800-3000",
+            hKeepAlivePeriod: 0,
+        };
+        if (clientXmux) {
+            for (const key of Object.keys(base)) {
+                if (clientXmux[key] !== undefined && clientXmux[key] !== '' && clientXmux[key] !== null) {
+                    base[key] = clientXmux[key];
+                }
+            }
+        }
+        return JSON.stringify({ xmux: base });
     }
 
     toJson() {
@@ -585,6 +619,8 @@ class xHTTPStreamSettings extends XrayCommonClass {
             uplinkDataPlacement: this.uplinkDataPlacement,
             uplinkDataKey: this.uplinkDataKey,
             uplinkChunkSize: this.uplinkChunkSize,
+            xmuxEnabled: this.xmuxEnabled,
+            xmux: this.xmux,
         };
     }
 }
@@ -1465,13 +1501,11 @@ class Inbound extends XrayCommonClass {
                 params.set("path", xhttp.path);
                 params.set("host", xhttp.host?.length > 0 ? xhttp.host : this.getHeader(xhttp, 'host'));
                 params.set("mode", xhttp.mode);
-                if (extra && extra.trim() !== "") {
-                    // remove spaces and newlines from json
-                    try {
-                        params.set("extra", JSON.stringify(JSON.parse(extra)));
-                    } catch (e) {
-                        params.set("extra", extra.trim().replace(/\s+/g, ''));
-                    }
+                // Build extra from inbound xmux settings merged with client xmux overrides
+                const clientXmux = (extra && typeof extra === 'object' && extra.xmuxOverride) ? extra : null;
+                const extraJson = xhttp.buildExtraJson(clientXmux);
+                if (extraJson) {
+                    params.set("extra", extraJson);
                 }
                 break;
         }
@@ -1724,7 +1758,7 @@ class Inbound extends XrayCommonClass {
             case Protocols.VMESS:
                 return this.genVmessLink(address, port, forceTls, remark, client.id, client.security);
             case Protocols.VLESS:
-                return this.genVLESSLink(address, port, forceTls, remark, client.id, client.flow, client.extra);
+                return this.genVLESSLink(address, port, forceTls, remark, client.id, client.flow, client.xmuxOverride || null);
             case Protocols.SHADOWSOCKS:
                 return this.genSSLink(address, port, forceTls, remark, this.isSSMultiUser ? client.password : '');
             case Protocols.TROJAN:
@@ -2068,7 +2102,8 @@ Inbound.VLESSSettings.VLESS = class extends XrayCommonClass {
         reset = 0,
         created_at = undefined,
         updated_at = undefined,
-        extra = ''
+        extra = '',
+        xmuxOverride = null,
     ) {
         super();
         this.id = id;
@@ -2085,6 +2120,29 @@ Inbound.VLESSSettings.VLESS = class extends XrayCommonClass {
         this.created_at = created_at;
         this.updated_at = updated_at;
         this.extra = extra;
+        this.xmuxOverride = xmuxOverride || {
+            xmuxOverride: false,
+            maxConcurrency: '',
+            maxConnections: '',
+            cMaxReuseTimes: '',
+            hMaxRequestTimes: '',
+            hMaxReusableSecs: '',
+            hKeepAlivePeriod: '',
+        };
+    }
+
+    // Build effective extra JSON string from inbound xmux + client overrides
+    buildExtra(inboundXhttp) {
+        if (!this.xmuxOverride.xmuxOverride) {
+            return inboundXhttp.buildExtraJson(null);
+        }
+        const overrides = {};
+        for (const key of ['maxConcurrency', 'maxConnections', 'cMaxReuseTimes', 'hMaxRequestTimes', 'hMaxReusableSecs', 'hKeepAlivePeriod']) {
+            if (this.xmuxOverride[key] !== '' && this.xmuxOverride[key] !== null && this.xmuxOverride[key] !== undefined) {
+                overrides[key] = this.xmuxOverride[key];
+            }
+        }
+        return inboundXhttp.buildExtraJson(overrides);
     }
 
     static fromJson(json = {}) {
@@ -2102,7 +2160,8 @@ Inbound.VLESSSettings.VLESS = class extends XrayCommonClass {
             json.reset,
             json.created_at,
             json.updated_at,
-            json.extra
+            json.extra,
+            json.xmuxOverride,
         );
     }
 

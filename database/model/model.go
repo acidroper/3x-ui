@@ -104,22 +104,34 @@ type Setting struct {
 	Value string `json:"value" form:"value"`
 }
 
+// XmuxOverride represents per-client xmux settings that override inbound-level defaults.
+type XmuxOverride struct {
+	XmuxOverride     bool   `json:"xmuxOverride"`
+	MaxConcurrency   string `json:"maxConcurrency,omitempty"`
+	MaxConnections   string `json:"maxConnections,omitempty"`
+	CMaxReuseTimes   string `json:"cMaxReuseTimes,omitempty"`
+	HMaxRequestTimes string `json:"hMaxRequestTimes,omitempty"`
+	HMaxReusableSecs string `json:"hMaxReusableSecs,omitempty"`
+	HKeepAlivePeriod string `json:"hKeepAlivePeriod,omitempty"`
+}
+
 // Client represents a client configuration for Xray inbounds with traffic limits and settings.
 type Client struct {
-	ID         string `json:"id"`                           // Unique client identifier
-	Security   string `json:"security"`                     // Security method (e.g., "auto", "aes-128-gcm")
-	Password   string `json:"password"`                     // Client password
-	Flow       string `json:"flow"`                         // Flow control (XTLS)
-	Email      string `json:"email"`                        // Client email identifier
-	LimitIP    int    `json:"limitIp"`                      // IP limit for this client
-	TotalGB    int64  `json:"totalGB" form:"totalGB"`       // Total traffic limit in GB
-	ExpiryTime int64  `json:"expiryTime" form:"expiryTime"` // Expiration timestamp
-	Enable     bool   `json:"enable" form:"enable"`         // Whether the client is enabled
-	TgID       int64  `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
-	SubID      string `json:"subId" form:"subId"`           // Subscription identifier
-	Comment    string `json:"comment" form:"comment"`       // Client comment
-	Reset      int    `json:"reset" form:"reset"`           // Reset period in days
-	CreatedAt  int64  `json:"created_at,omitempty"`         // Creation timestamp
-	UpdatedAt  int64  `json:"updated_at,omitempty"`         // Last update timestamp
-	Extra      string `json:"extra,omitempty" form:"extra"` // XHTTP extra raw JSON
+	ID            string        `json:"id"`                                     // Unique client identifier
+	Security      string        `json:"security"`                               // Security method (e.g., "auto", "aes-128-gcm")
+	Password      string        `json:"password"`                               // Client password
+	Flow          string        `json:"flow"`                                   // Flow control (XTLS)
+	Email         string        `json:"email"`                                  // Client email identifier
+	LimitIP       int           `json:"limitIp"`                                // IP limit for this client
+	TotalGB       int64         `json:"totalGB" form:"totalGB"`                 // Total traffic limit in GB
+	ExpiryTime    int64         `json:"expiryTime" form:"expiryTime"`           // Expiration timestamp
+	Enable        bool          `json:"enable" form:"enable"`                   // Whether the client is enabled
+	TgID          int64         `json:"tgId" form:"tgId"`                       // Telegram user ID for notifications
+	SubID         string        `json:"subId" form:"subId"`                     // Subscription identifier
+	Comment       string        `json:"comment" form:"comment"`                 // Client comment
+	Reset         int           `json:"reset" form:"reset"`                     // Reset period in days
+	CreatedAt     int64         `json:"created_at,omitempty"`                   // Creation timestamp
+	UpdatedAt     int64         `json:"updated_at,omitempty"`                   // Last update timestamp
+	Extra         string        `json:"extra,omitempty" form:"extra"`           // XHTTP extra raw JSON (legacy)
+	XmuxOverride  *XmuxOverride `json:"xmuxOverride,omitempty"`                 // Per-client xmux overrides
 }
