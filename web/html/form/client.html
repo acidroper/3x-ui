@@ -22,8 +22,11 @@
                     <span>{{ i18n "reset" }}</span>
                 </template>
                 {{ i18n "password" }}
-                <a-icon v-if="inbound.protocol === Protocols.SHADOWSOCKS" @click="client.password = RandomUtil.randomShadowsocksPassword(inbound.settings.method)" type="sync"></a-icon>
-                <a-icon v-if="inbound.protocol === Protocols.TROJAN" @click="client.password = RandomUtil.randomSeq(10)"type="sync"> </a-icon>
+                <a-icon v-if="inbound.protocol === Protocols.SHADOWSOCKS"
+                    @click="client.password = RandomUtil.randomShadowsocksPassword(inbound.settings.method)"
+                    type="sync"></a-icon>
+                <a-icon v-if="inbound.protocol === Protocols.TROJAN" @click="client.password = RandomUtil.randomSeq(10)"
+                    type="sync"> </a-icon>
             </a-tooltip>
         </template>
         <a-input v-model.trim="client.password"></a-input>
@@ -77,7 +80,7 @@
                 <template slot="title">
                     <span>{{ i18n "pages.inbounds.IPLimitDesc"}}</span>
                 </template>
-                    <span>{{ i18n "pages.inbounds.IPLimit"}} </span>
+                <span>{{ i18n "pages.inbounds.IPLimit"}} </span>
                 <a-icon type="question-circle"></a-icon>
             </a-tooltip>
         </template>
@@ -89,7 +92,7 @@
                 <template slot="title">
                     <span>{{ i18n "pages.inbounds.IPLimitlogDesc" }}</span>
                 </template>
-                    <span>{{ i18n "pages.inbounds.IPLimitlog" }} </span>
+                <span>{{ i18n "pages.inbounds.IPLimitlog" }} </span>
                 <a-icon type="question-circle"></a-icon>
             </a-tooltip>
         </template>
@@ -113,6 +116,33 @@
             <a-select-option v-for="key in TLS_FLOW_CONTROL" :value="key">[[ key ]]</a-select-option>
         </a-select>
     </a-form-item>
+    <template v-if="inbound.protocol === Protocols.VLESS && inbound.stream.network === 'xhttp'">
+        <a-form-item label="XMUX Override">
+            <a-switch v-model="client.xmuxOverride.enabled"></a-switch>
+        </a-form-item>
+        <template v-if="client.xmuxOverride.enabled">
+            <a-form-item label="maxConcurrency">
+                <a-input v-model.trim="client.xmuxOverride.maxConcurrency" placeholder="16-32"
+                    :disabled="!!client.xmuxOverride.maxConnections"></a-input>
+            </a-form-item>
+            <a-form-item label="maxConnections">
+                <a-input v-model.trim="client.xmuxOverride.maxConnections" placeholder="0"
+                    :disabled="!!client.xmuxOverride.maxConcurrency"></a-input>
+            </a-form-item>
+            <a-form-item label="cMaxReuseTimes">
+                <a-input v-model.trim="client.xmuxOverride.cMaxReuseTimes" placeholder="64-128"></a-input>
+            </a-form-item>
+            <a-form-item label="hMaxRequestTimes">
+                <a-input v-model.trim="client.xmuxOverride.hMaxRequestTimes" placeholder="700-900"></a-input>
+            </a-form-item>
+            <a-form-item label="hMaxReusableSecs">
+                <a-input v-model.trim="client.xmuxOverride.hMaxReusableSecs" placeholder="1800-3000"></a-input>
+            </a-form-item>
+            <a-form-item label="hKeepAlivePeriod">
+                <a-input v-model.trim="client.xmuxOverride.hKeepAlivePeriod" placeholder="0"></a-input>
+            </a-form-item>
+        </template>
+    </template>
     <a-form-item>
         <template slot="label">
             <a-tooltip>
@@ -133,8 +163,7 @@
         </a-tag>
         <a-tooltip>
             <template slot="title">{{ i18n "pages.inbounds.resetTraffic" }}</template>
-            <a-icon type="retweet"
-                @click="resetClientTraffic(client.email,clientStats.inboundId,$event.target)"
+            <a-icon type="retweet" @click="resetClientTraffic(client.email,clientStats.inboundId,$event.target)"
                 v-if="client.email.length > 0"></a-icon>
         </a-tooltip>
     </a-form-item>
@@ -155,7 +184,7 @@
         <a-date-picker v-if="datepicker == 'gregorian'" :show-time="{ format: 'HH:mm:ss' }" format="YYYY-MM-DD HH:mm:ss"
             :dropdown-class-name="themeSwitcher.currentTheme" v-model="client._expiryTime"></a-date-picker>
         <a-persian-datepicker v-else placeholder='{{ i18n "pages.settings.datepickerPlaceholder" }}'
-                            value="client._expiryTime" v-model="client._expiryTime"></a-persian-datepicker>
+            value="client._expiryTime" v-model="client._expiryTime"></a-persian-datepicker>
         <a-tag color="red" v-if="isEdit && isExpiry">Expired</a-tag>
     </a-form-item>
     <a-form-item v-if="client.expiryTime != 0">

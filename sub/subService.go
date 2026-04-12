@@ -118,7 +118,7 @@ func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) 
 	err := db.Model(model.Inbound{}).Preload("ClientStats").Where(`id in (
 		SELECT DISTINCT inbounds.id
 		FROM inbounds,
-			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client 
+			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
 		WHERE
 			protocol in ('vmess','vless','trojan','shadowsocks')
 			AND JSON_EXTRACT(client.value, '$.subId') = ? AND enable = ?
@@ -406,6 +406,69 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			params["host"] = searchHost(headers)
 		}
 		params["mode"] = xhttp["mode"].(string)
+
+		var finalXmux map[string]any
+
+		uiXmuxEnabled, _ := xhttp["uiXmuxEnabled"].(bool)
+		if uiXmuxEnabled {
+			if uiXmuxSettings, ok := xhttp["uiXmuxSettings"].(map[string]any); ok {
+				finalXmux = make(map[string]any)
+				for k, v := range uiXmuxSettings {
+					finalXmux[k] = v
+				}
+			}
+		}
+
+		rawClients, ok := settings["clients"].([]any)
+		if ok {
+			for _, rc := range rawClients {
+				rcMap, ok := rc.(map[string]any)
+				if ok && rcMap["email"] == email {
+					if extraStr, ok := rcMap["extra"].(string); ok && extraStr != "" {
+						var extraObj map[string]any
+						if err := json.Unmarshal([]byte(extraStr), &extraObj); err == nil {
+							if xmuxOverride, ok := extraObj["xmuxOverride"].(map[string]any); ok {
+								if enabled, _ := xmuxOverride["enabled"].(bool); enabled {
+									if finalXmux == nil {
+										finalXmux = make(map[string]any)
+									}
+									for k, v := range xmuxOverride {
+										if k != "enabled" {
+											finalXmux[k] = v
+										}
+									}
+									if val, exists := xmuxOverride["maxConcurrency"]; exists && val != "" {
+										delete(finalXmux, "maxConnections")
+									}
+									if val, exists := xmuxOverride["maxConnections"]; exists && val != "" {
+										delete(finalXmux, "maxConcurrency")
+									}
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+
+		if finalXmux != nil {
+			cleanXmux := make(map[string]any)
+			for k, v := range finalXmux {
+				if v == nil || k == "enabled" {
+					continue
+				}
+				if strVal, isStr := v.(string); isStr && strVal == "" {
+					continue
+				}
+				cleanXmux[k] = v
+			}
+			if len(cleanXmux) > 0 {
+				extraData := map[string]any{"xmux": cleanXmux}
+				bz, _ := json.Marshal(extraData)
+				params["extra"] = string(bz)
+			}
+		}
 	}
 	security, _ := stream["security"].(string)
 	if security == "tls" {
