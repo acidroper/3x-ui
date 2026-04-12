@@ -174,9 +174,15 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 			if ok1 || ok2 {
 				if ok1 {
 					delete(tlsSettings, "settings")
-				} else if ok2 {
+				}
+				if ok2 {
 					delete(realitySettings, "settings")
 				}
+			}
+
+			if xhttpSettings, ok3 := stream["xhttpSettings"].(map[string]any); ok3 {
+				delete(xhttpSettings, "uiXmuxEnabled")
+				delete(xhttpSettings, "uiXmuxSettings")
 			}
 
 			delete(stream, "externalProxy")

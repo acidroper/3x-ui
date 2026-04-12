@@ -143,5 +143,28 @@
     <a-form-item label="No SSE Header">
         <a-switch v-model="inbound.stream.xhttp.noSSEHeader"></a-switch>
     </a-form-item>
+    <a-form-item label="XMUX (client-side)">
+        <a-switch v-model="inbound.stream.xhttp.uiXmuxEnabled"></a-switch>
+    </a-form-item>
+    <template v-if="inbound.stream.xhttp.uiXmuxEnabled">
+        <a-form-item label="maxConcurrency">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.maxConcurrency" placeholder="16-32" :disabled="!!inbound.stream.xhttp.uiXmuxSettings.maxConnections"></a-input>
+        </a-form-item>
+        <a-form-item label="maxConnections">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.maxConnections" placeholder="0" :disabled="!!inbound.stream.xhttp.uiXmuxSettings.maxConcurrency"></a-input>
+        </a-form-item>
+        <a-form-item label="cMaxReuseTimes">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.cMaxReuseTimes" placeholder="64-128"></a-input>
+        </a-form-item>
+        <a-form-item label="hMaxRequestTimes">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.hMaxRequestTimes" placeholder="700-900"></a-input>
+        </a-form-item>
+        <a-form-item label="hMaxReusableSecs">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.hMaxReusableSecs" placeholder="1800-3000"></a-input>
+        </a-form-item>
+        <a-form-item label="hKeepAlivePeriod">
+            <a-input v-model.trim="inbound.stream.xhttp.uiXmuxSettings.hKeepAlivePeriod" placeholder="0"></a-input>
+        </a-form-item>
+    </template>
 </a-form>
 {{end}}

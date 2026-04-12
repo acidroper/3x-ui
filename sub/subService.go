@@ -406,6 +406,63 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 			params["host"] = searchHost(headers)
 		}
 		params["mode"] = xhttp["mode"].(string)
+
+		var finalXmux map[string]any
+
+		uiXmuxEnabled, _ := xhttp["uiXmuxEnabled"].(bool)
+		if uiXmuxEnabled {
+			if uiXmuxSettings, ok := xhttp["uiXmuxSettings"].(map[string]any); ok {
+				finalXmux = make(map[string]any)
+				for k, v := range uiXmuxSettings {
+					finalXmux[k] = v
+				}
+			}
+		}
+
+		rawClients, ok := settings["clients"].([]any)
+		if ok {
+			for _, rc := range rawClients {
+				rcMap, ok := rc.(map[string]any)
+				if ok && rcMap["email"] == email {
+					if extraStr, ok := rcMap["extra"].(string); ok && extraStr != "" {
+						var extraObj map[string]any
+						if err := json.Unmarshal([]byte(extraStr), &extraObj); err == nil {
+							if xmuxOverride, ok := extraObj["xmuxOverride"].(map[string]any); ok {
+								if enabled, _ := xmuxOverride["enabled"].(bool); enabled {
+									if finalXmux == nil {
+										finalXmux = make(map[string]any)
+									}
+									for k, v := range xmuxOverride {
+										if k != "enabled" {
+											finalXmux[k] = v
+										}
+									}
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+
+		if finalXmux != nil {
+			cleanXmux := make(map[string]string)
+			for k, v := range finalXmux {
+				if v == nil {
+					continue
+				}
+				vStr := fmt.Sprintf("%v", v)
+				if vStr != "" && k != "enabled" {
+					cleanXmux[k] = vStr
+				}
+			}
+			if len(cleanXmux) > 0 {
+				extraData := map[string]any{"xmux": cleanXmux}
+				bz, _ := json.Marshal(extraData)
+				params["extra"] = string(bz)
+			}
+		}
 	}
 	security, _ := stream["security"].(string)
 	if security == "tls" {
@@ -602,6 +659,65 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 			params["host"] = searchHost(headers)
 		}
 		params["mode"] = xhttp["mode"].(string)
+
+		var finalXmux map[string]any
+
+		uiXmuxEnabled, _ := xhttp["uiXmuxEnabled"].(bool)
+		if uiXmuxEnabled {
+			if uiXmuxSettings, ok := xhttp["uiXmuxSettings"].(map[string]any); ok {
+				finalXmux = make(map[string]any)
+				for k, v := range uiXmuxSettings {
+					finalXmux[k] = v
+				}
+			}
+		}
+
+		var settings map[string]any
+		json.Unmarshal([]byte(inbound.Settings), &settings)
+		rawClients, ok := settings["clients"].([]any)
+		if ok {
+			for _, rc := range rawClients {
+				rcMap, ok := rc.(map[string]any)
+				if ok && rcMap["email"] == email {
+					if extraStr, ok := rcMap["extra"].(string); ok && extraStr != "" {
+						var extraObj map[string]any
+						if err := json.Unmarshal([]byte(extraStr), &extraObj); err == nil {
+							if xmuxOverride, ok := extraObj["xmuxOverride"].(map[string]any); ok {
+								if enabled, _ := xmuxOverride["enabled"].(bool); enabled {
+									if finalXmux == nil {
+										finalXmux = make(map[string]any)
+									}
+									for k, v := range xmuxOverride {
+										if k != "enabled" {
+											finalXmux[k] = v
+										}
+									}
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+
+		if finalXmux != nil {
+			cleanXmux := make(map[string]string)
+			for k, v := range finalXmux {
+				if v == nil {
+					continue
+				}
+				vStr := fmt.Sprintf("%v", v)
+				if vStr != "" && k != "enabled" {
+					cleanXmux[k] = vStr
+				}
+			}
+			if len(cleanXmux) > 0 {
+				extraData := map[string]any{"xmux": cleanXmux}
+				bz, _ := json.Marshal(extraData)
+				params["extra"] = string(bz)
+			}
+		}
 	}
 	security, _ := stream["security"].(string)
 	if security == "tls" {
