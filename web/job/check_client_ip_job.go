@@ -3,6 +3,7 @@ package job
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"os"
@@ -31,6 +32,27 @@ type CheckClientIpJob struct {
 }
 
 var job *CheckClientIpJob
+
+const defaultXrayAPIPort = 62789
+
+// ipStaleAfterSeconds controls how long a client IP kept in the
+// per-client tracking table (model.InboundClientIps.Ips) is considered
+// still "active" before it's evicted during the next scan.
+//
+// Without this eviction, an IP that connected once and then went away
+// keeps sitting in the table with its old timestamp. Because the
+// excess-IP selector sorts ascending ("oldest wins, newest loses") to
+// protect the original/current connections, that stale entry keeps
+// occupying a slot and the IP that is *actually* currently using the
+// config gets classified as "new excess" and banned by fail2ban on
+// every single run — producing the continuous ban loop from #4077.
+//
+// 30 minutes is chosen so an actively-streaming client (where xray
+// emits a fresh `accepted` log line whenever it opens a new TCP) will
+// always refresh its timestamp well within the window, but a client
+// that has really stopped using the config will drop out of the table
+// in a bounded time and free its slot.
+const ipStaleAfterSeconds = int64(30 * 60)
 
 // NewCheckClientIpJob creates a new client IP monitoring job instance.
 func NewCheckClientIpJob() *CheckClientIpJob {
@@ -199,6 +221,31 @@ func (j *CheckClientIpJob) processLogFile() bool {
 	return shouldCleanLog
 }
 
+// mergeClientIps combines the persisted (old) and freshly observed (new)
+// IP-with-timestamp lists for a single client into a map. An entry is
+// dropped if its last-seen timestamp is older than staleCutoff.
+//
+// Extracted as a helper so updateInboundClientIps can stay DB-oriented
+// and the merge policy can be exercised by a unit test.
+func mergeClientIps(old, new []IPWithTimestamp, staleCutoff int64) map[string]int64 {
+	ipMap := make(map[string]int64, len(old)+len(new))
+	for _, ipTime := range old {
+		if ipTime.Timestamp < staleCutoff {
+			continue
+		}
+		ipMap[ipTime.IP] = ipTime.Timestamp
+	}
+	for _, ipTime := range new {
+		if ipTime.Timestamp < staleCutoff {
+			continue
+		}
+		if existingTime, ok := ipMap[ipTime.IP]; !ok || ipTime.Timestamp > existingTime {
+			ipMap[ipTime.IP] = ipTime.Timestamp
+		}
+	}
+	return ipMap
+}
+
 func (j *CheckClientIpJob) checkFail2BanInstalled() bool {
 	cmd := "fail2ban-client"
 	args := []string{"-h"}
@@ -307,16 +354,9 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 		json.Unmarshal([]byte(inboundClientIps.Ips), &oldIpsWithTime)
 	}
 
-	// Merge old and new IPs, keeping the latest timestamp for each IP
-	ipMap := make(map[string]int64)
-	for _, ipTime := range oldIpsWithTime {
-		ipMap[ipTime.IP] = ipTime.Timestamp
-	}
-	for _, ipTime := range newIpsWithTime {
-		if existingTime, ok := ipMap[ipTime.IP]; !ok || ipTime.Timestamp > existingTime {
-			ipMap[ipTime.IP] = ipTime.Timestamp
-		}
-	}
+	// Merge old and new IPs, evicting entries that haven't been
+	// re-observed in a while. See mergeClientIps / #4077 for why.
+	ipMap := mergeClientIps(oldIpsWithTime, newIpsWithTime, time.Now().Unix()-ipStaleAfterSeconds)
 
 	// Convert back to slice and sort by timestamp (oldest first)
 	// This ensures we always protect the original/current connections and ban new excess ones.
@@ -355,6 +395,12 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 			log.Printf("[LIMIT_IP] Email = %s || Disconnecting OLD IP = %s || Timestamp = %d", clientEmail, ipTime.IP, ipTime.Timestamp)
 		}
 
+		// Actually disconnect banned IPs by temporarily removing and re-adding user
+		// This forces Xray to drop existing connections from banned IPs
+		if len(bannedIps) > 0 {
+			j.disconnectClientTemporarily(inbound, clientEmail, clients)
+		}
+
 		// Update database with only the currently active (kept) IPs
 		jsonIps, _ := json.Marshal(keptIps)
 		inboundClientIps.Ips = string(jsonIps)
@@ -376,6 +422,130 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	}
 
 	return shouldCleanLog
+}
+
+// disconnectClientTemporarily removes and re-adds a client to force disconnect banned connections
+func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, clientEmail string, clients []model.Client) {
+	var xrayAPI xray.XrayAPI
+	apiPort := j.resolveXrayAPIPort()
+
+	err := xrayAPI.Init(apiPort)
+	if err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to init Xray API for disconnection: %v", err)
+		return
+	}
+	defer xrayAPI.Close()
+
+	// Find the client config
+	var clientConfig map[string]any
+	for _, client := range clients {
+		if client.Email == clientEmail {
+			// Convert client to map for API
+			clientBytes, _ := json.Marshal(client)
+			json.Unmarshal(clientBytes, &clientConfig)
+			break
+		}
+	}
+
+	if clientConfig == nil {
+		return
+	}
+
+	// Only perform remove/re-add for protocols supported by XrayAPI.AddUser
+	protocol := string(inbound.Protocol)
+	switch protocol {
+	case "vmess", "vless", "trojan", "shadowsocks":
+		// supported protocols, continue
+	default:
+		logger.Warningf("[LIMIT_IP] Temporary disconnect is not supported for protocol %s on inbound %s", protocol, inbound.Tag)
+		return
+	}
+
+	// For Shadowsocks, ensure the required "cipher" field is present by
+	// reading it from the inbound settings (e.g., settings["method"]).
+	if string(inbound.Protocol) == "shadowsocks" {
+		var inboundSettings map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &inboundSettings); err != nil {
+			logger.Warningf("[LIMIT_IP] Failed to parse inbound settings for shadowsocks cipher: %v", err)
+		} else {
+			if method, ok := inboundSettings["method"].(string); ok && method != "" {
+				clientConfig["cipher"] = method
+			}
+		}
+	}
+
+	// Remove user to disconnect all connections
+	err = xrayAPI.RemoveUser(inbound.Tag, clientEmail)
+	if err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to remove user %s: %v", clientEmail, err)
+		return
+	}
+
+	// Wait a moment for disconnection to take effect
+	time.Sleep(100 * time.Millisecond)
+
+	// Re-add user to allow new connections
+	err = xrayAPI.AddUser(protocol, inbound.Tag, clientConfig)
+	if err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to re-add user %s: %v", clientEmail, err)
+	}
+}
+
+// resolveXrayAPIPort returns the API inbound port from running config, then template config, then default.
+func (j *CheckClientIpJob) resolveXrayAPIPort() int {
+	var configErr error
+	var templateErr error
+
+	if port, err := getAPIPortFromConfigPath(xray.GetConfigPath()); err == nil {
+		return port
+	} else {
+		configErr = err
+	}
+
+	db := database.GetDB()
+	var template model.Setting
+	if err := db.Where("key = ?", "xrayTemplateConfig").First(&template).Error; err == nil {
+		if port, parseErr := getAPIPortFromConfigData([]byte(template.Value)); parseErr == nil {
+			return port
+		} else {
+			templateErr = parseErr
+		}
+	} else {
+		templateErr = err
+	}
+
+	logger.Warningf(
+		"[LIMIT_IP] Could not determine Xray API port from config or template; falling back to default port %d (config error: %v, template error: %v)",
+		defaultXrayAPIPort,
+		configErr,
+		templateErr,
+	)
+
+	return defaultXrayAPIPort
+}
+
+func getAPIPortFromConfigPath(configPath string) (int, error) {
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		return 0, err
+	}
+
+	return getAPIPortFromConfigData(configData)
+}
+
+func getAPIPortFromConfigData(configData []byte) (int, error) {
+	xrayConfig := &xray.Config{}
+	if err := json.Unmarshal(configData, xrayConfig); err != nil {
+		return 0, err
+	}
+
+	for _, inboundConfig := range xrayConfig.InboundConfigs {
+		if inboundConfig.Tag == "api" && inboundConfig.Port > 0 {
+			return inboundConfig.Port, nil
+		}
+	}
+
+	return 0, errors.New("api inbound port not found")
 }
 
 func (j *CheckClientIpJob) getInboundByEmail(clientEmail string) (*model.Inbound, error) {
