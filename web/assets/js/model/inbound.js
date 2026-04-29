@@ -497,6 +497,15 @@ class xHTTPStreamSettings extends XrayCommonClass {
         uplinkDataPlacement = '',
         uplinkDataKey = '',
         uplinkChunkSize = 0,
+        uiXmuxEnabled = false,
+        uiXmuxSettings = {
+            maxConcurrency: '',
+            maxConnections: '',
+            cMaxReuseTimes: '',
+            hMaxRequestTimes: '',
+            hMaxReusableSecs: '',
+            hKeepAlivePeriod: ''
+        }
     ) {
         super();
         this.path = path;
@@ -521,6 +530,15 @@ class xHTTPStreamSettings extends XrayCommonClass {
         this.uplinkDataPlacement = uplinkDataPlacement;
         this.uplinkDataKey = uplinkDataKey;
         this.uplinkChunkSize = uplinkChunkSize;
+        this.uiXmuxEnabled = uiXmuxEnabled;
+        this.uiXmuxSettings = Object.assign({
+            maxConcurrency: '',
+            maxConnections: '',
+            cMaxReuseTimes: '',
+            hMaxRequestTimes: '',
+            hMaxReusableSecs: '',
+            hKeepAlivePeriod: ''
+        }, uiXmuxSettings || {});
     }
 
     addHeader(name, value) {
@@ -555,10 +573,20 @@ class xHTTPStreamSettings extends XrayCommonClass {
             json.uplinkDataPlacement,
             json.uplinkDataKey,
             json.uplinkChunkSize,
+            json.uiXmuxEnabled,
+            json.uiXmuxSettings
         );
     }
 
     toJson() {
+        let cleanXmuxSettings = {};
+        if (this.uiXmuxSettings) {
+            for (let k in this.uiXmuxSettings) {
+                if (this.uiXmuxSettings[k] !== '' && this.uiXmuxSettings[k] !== null && this.uiXmuxSettings[k] !== undefined) {
+                    cleanXmuxSettings[k] = this.uiXmuxSettings[k];
+                }
+            }
+        }
         return {
             path: this.path,
             host: this.host,
@@ -582,6 +610,8 @@ class xHTTPStreamSettings extends XrayCommonClass {
             uplinkDataPlacement: this.uplinkDataPlacement,
             uplinkDataKey: this.uplinkDataKey,
             uplinkChunkSize: this.uplinkChunkSize,
+            uiXmuxEnabled: this.uiXmuxEnabled,
+            uiXmuxSettings: cleanXmuxSettings,
         };
     }
 }
@@ -1651,6 +1681,29 @@ class Inbound extends XrayCommonClass {
                 params.set("path", xhttp.path);
                 params.set("host", xhttp.host?.length > 0 ? xhttp.host : this.getHeader(xhttp, 'host'));
                 params.set("mode", xhttp.mode);
+                let finalXmuxObj = {};
+                if (xhttp.uiXmuxEnabled) {
+                    finalXmuxObj = ObjectUtil.clone(xhttp.uiXmuxSettings);
+                }
+                let vlessClient = this.settings.vlesses?.find(c => c.id === clientId);
+                if (vlessClient && vlessClient.xmuxOverride && vlessClient.xmuxOverride.enabled) {
+                    for (let k in vlessClient.xmuxOverride) {
+                        if (k !== 'enabled' && vlessClient.xmuxOverride[k] !== '' && vlessClient.xmuxOverride[k] !== null && vlessClient.xmuxOverride[k] !== undefined) {
+                            finalXmuxObj[k] = vlessClient.xmuxOverride[k];
+                        }
+                    }
+                    if (vlessClient.xmuxOverride.maxConcurrency) delete finalXmuxObj.maxConnections;
+                    if (vlessClient.xmuxOverride.maxConnections) delete finalXmuxObj.maxConcurrency;
+                }
+                let cleanXmux = {};
+                for (let k in finalXmuxObj) {
+                    if (finalXmuxObj[k] !== '' && finalXmuxObj[k] !== null && finalXmuxObj[k] !== undefined) {
+                        cleanXmux[k] = finalXmuxObj[k];
+                    }
+                }
+                if (Object.keys(cleanXmux).length > 0) {
+                    params.set("extra", JSON.stringify({ xmux: cleanXmux }));
+                }
                 Inbound.applyXhttpPaddingToParams(xhttp, params);
                 break;
         }
@@ -2310,26 +2363,71 @@ Inbound.VLESSSettings.VLESS = class extends Inbound.ClientBase {
     constructor(
         id = RandomUtil.randomUUID(),
         flow = '',
-        email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at,
+        email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at, extra = ''
     ) {
         super(email, limitIp, totalGB, expiryTime, enable, tgId, subId, comment, reset, created_at, updated_at);
         this.id = id;
         this.flow = flow;
+        this.extra = extra;
+        this.xmuxOverride = {
+            enabled: false,
+            maxConcurrency: '',
+            maxConnections: '',
+            cMaxReuseTimes: '',
+            hMaxRequestTimes: '',
+            hMaxReusableSecs: '',
+            hKeepAlivePeriod: ''
+        };
     }
 
     static fromJson(json = {}) {
-        return new Inbound.VLESSSettings.VLESS(
+        let client = new Inbound.VLESSSettings.VLESS(
             json.id,
             json.flow,
             ...Inbound.ClientBase.commonArgsFromJson(json),
+            json.extra
         );
+        if (json.extra) {
+            try {
+                let extraObj = JSON.parse(json.extra);
+                if (extraObj && extraObj.xmuxOverride) {
+                    Object.assign(client.xmuxOverride, extraObj.xmuxOverride);
+                }
+            } catch (e) {
+                console.error("Failed to parse client extra", e);
+            }
+        }
+        return client;
     }
 
     toJson() {
+        let extraObj = {};
+        if (this.extra) {
+            try {
+                extraObj = JSON.parse(this.extra);
+            } catch (e) {
+                console.error("Failed to parse client extra on toJson", e);
+            }
+        }
+        if (this.xmuxOverride && this.xmuxOverride.enabled) {
+            let cleanXmuxOverride = { enabled: true };
+            for (let k in this.xmuxOverride) {
+                if (k !== 'enabled' && this.xmuxOverride[k] !== '' && this.xmuxOverride[k] !== null && this.xmuxOverride[k] !== undefined) {
+                    cleanXmuxOverride[k] = this.xmuxOverride[k];
+                }
+            }
+            extraObj.xmuxOverride = cleanXmuxOverride;
+        } else {
+            delete extraObj.xmuxOverride;
+        }
+
+        this.extra = Object.keys(extraObj).length > 0 ? JSON.stringify(extraObj) : "";
+
         return {
             id: this.id,
             flow: this.flow,
             ...this._clientBaseToJson(),
+            extra: this.extra
         };
     }
 };

@@ -181,6 +181,53 @@
       >
     </a-select>
   </a-form-item>
+  <template v-if="inbound.protocol === Protocols.VLESS && inbound.stream.network === 'xhttp'">
+    <a-form-item label="XMUX Override">
+      <a-switch v-model="client.xmuxOverride.enabled"></a-switch>
+    </a-form-item>
+    <template v-if="client.xmuxOverride.enabled">
+      <a-divider :style="{ margin: '5px 0 0' }">XMUX</a-divider>
+      <a-form-item label="maxConcurrency">
+        <a-input
+          v-model.trim="client.xmuxOverride.maxConcurrency"
+          placeholder="16-32"
+          :disabled="!!client.xmuxOverride.maxConnections"
+        ></a-input>
+      </a-form-item>
+      <a-form-item label="maxConnections">
+        <a-input
+          v-model.trim="client.xmuxOverride.maxConnections"
+          placeholder="0"
+          :disabled="!!client.xmuxOverride.maxConcurrency"
+        ></a-input>
+      </a-form-item>
+      <a-form-item label="cMaxReuseTimes">
+        <a-input
+          v-model.trim="client.xmuxOverride.cMaxReuseTimes"
+          placeholder="64-128"
+        ></a-input>
+      </a-form-item>
+      <a-form-item label="hMaxRequestTimes">
+        <a-input
+          v-model.trim="client.xmuxOverride.hMaxRequestTimes"
+          placeholder="700-900"
+        ></a-input>
+      </a-form-item>
+      <a-form-item label="hMaxReusableSecs">
+        <a-input
+          v-model.trim="client.xmuxOverride.hMaxReusableSecs"
+          placeholder="1800-3000"
+        ></a-input>
+      </a-form-item>
+      <a-form-item label="hKeepAlivePeriod">
+        <a-input
+          v-model.trim="client.xmuxOverride.hKeepAlivePeriod"
+          placeholder="0"
+        ></a-input>
+      </a-form-item>
+      <a-divider :style="{ margin: '5px 0' }" />
+    </template>
+  </template>
   <a-form-item>
     <template slot="label">
       <a-tooltip>

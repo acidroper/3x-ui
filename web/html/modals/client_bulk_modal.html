@@ -59,6 +59,37 @@
                     key ]]</a-select-option>
             </a-select>
         </a-form-item>
+        <template v-if="inbound.protocol === Protocols.VLESS && inbound.stream.network === 'xhttp'">
+            <a-form-item label="XMUX Override">
+                <a-switch v-model="clientsBulkModal.xmuxOverride.enabled"></a-switch>
+            </a-form-item>
+            <template v-if="clientsBulkModal.xmuxOverride.enabled">
+                <a-divider :style="{ margin: '5px 0 0' }">XMUX</a-divider>
+                <a-form-item label="maxConcurrency">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.maxConcurrency" placeholder="16-32"
+                        :disabled="!!clientsBulkModal.xmuxOverride.maxConnections"></a-input>
+                </a-form-item>
+                <a-form-item label="maxConnections">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.maxConnections" placeholder="0"
+                        :disabled="!!clientsBulkModal.xmuxOverride.maxConcurrency"></a-input>
+                </a-form-item>
+                <a-form-item label="cMaxReuseTimes">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.cMaxReuseTimes" placeholder="64-128"></a-input>
+                </a-form-item>
+                <a-form-item label="hMaxRequestTimes">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.hMaxRequestTimes"
+                        placeholder="700-900"></a-input>
+                </a-form-item>
+                <a-form-item label="hMaxReusableSecs">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.hMaxReusableSecs"
+                        placeholder="1800-3000"></a-input>
+                </a-form-item>
+                <a-form-item label="hKeepAlivePeriod">
+                    <a-input v-model.trim="clientsBulkModal.xmuxOverride.hKeepAlivePeriod" placeholder="0"></a-input>
+                </a-form-item>
+                <a-divider :style="{ margin: '5px 0' }" />
+            </template>
+        </template>
         <a-form-item v-if="app.subSettings?.enable">
             <template slot="label">
                 <a-tooltip>
@@ -182,6 +213,7 @@
         tgId: '',
         security: "auto",
         flow: "",
+        xmuxOverride: { enabled: false, maxConcurrency: '', maxConnections: '', cMaxReuseTimes: '', hMaxRequestTimes: '', hMaxReusableSecs: '', hKeepAlivePeriod: '' },
         delayedStart: false,
         reset: 0,
         ok() {
@@ -210,6 +242,7 @@
                 if (clientsBulkModal.inbound.canEnableTlsFlow()) {
                     newClient.flow = clientsBulkModal.flow;
                 }
+                newClient.xmuxOverride = Object.assign({}, clientsBulkModal.xmuxOverride);
                 newClient.reset = clientsBulkModal.reset;
                 clients.push(newClient);
             }
@@ -238,6 +271,7 @@
             this.tgId = '';
             this.security = "auto";
             this.flow = "";
+            this.xmuxOverride = { enabled: false, maxConcurrency: '', maxConnections: '', cMaxReuseTimes: '', hMaxRequestTimes: '', hMaxReusableSecs: '', hKeepAlivePeriod: '' };
             this.dbInbound = new DBInbound(dbInbound);
             this.inbound = Inbound.fromJson(dbInbound.toInbound().toJson());
             this.delayedStart = false;

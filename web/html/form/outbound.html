@@ -669,20 +669,16 @@
               v-model.trim="outbound.stream.xhttp.scMinPostsIntervalMs"
             ></a-input>
           </a-form-item>
-          <a-form-item
-            label="Max Concurrency"
-            v-if="!outbound.stream.xhttp.xmux.maxConnections"
-          >
+          <a-form-item label="Max Concurrency">
             <a-input
               v-model="outbound.stream.xhttp.xmux.maxConcurrency"
+              :disabled="!!outbound.stream.xhttp.xmux.maxConnections"
             ></a-input>
           </a-form-item>
-          <a-form-item
-            label="Max Connections"
-            v-if="!outbound.stream.xhttp.xmux.maxConcurrency"
-          >
+          <a-form-item label="Max Connections">
             <a-input
               v-model="outbound.stream.xhttp.xmux.maxConnections"
+              :disabled="!!outbound.stream.xhttp.xmux.maxConcurrency"
             ></a-input>
           </a-form-item>
           <a-form-item label="Max Reuse Times">
