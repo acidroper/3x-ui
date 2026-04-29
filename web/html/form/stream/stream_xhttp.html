@@ -212,6 +212,7 @@
     <a-switch v-model="inbound.stream.xhttp.uiXmuxEnabled"></a-switch>
   </a-form-item>
   <template v-if="inbound.stream.xhttp.uiXmuxEnabled">
+    <a-divider :style="{ margin: '5px 0 0' }">XMUX (client-side)</a-divider>
     <a-form-item label="maxConcurrency">
       <a-input
         v-model.trim="inbound.stream.xhttp.uiXmuxSettings.maxConcurrency"

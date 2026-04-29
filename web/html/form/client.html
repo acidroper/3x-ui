@@ -186,6 +186,7 @@
       <a-switch v-model="client.xmuxOverride.enabled"></a-switch>
     </a-form-item>
     <template v-if="client.xmuxOverride.enabled">
+      <a-divider :style="{ margin: '5px 0 0' }">XMUX</a-divider>
       <a-form-item label="maxConcurrency">
         <a-input
           v-model.trim="client.xmuxOverride.maxConcurrency"
@@ -224,6 +225,7 @@
           placeholder="0"
         ></a-input>
       </a-form-item>
+      <a-divider :style="{ margin: '5px 0' }" />
     </template>
   </template>
   <a-form-item>
