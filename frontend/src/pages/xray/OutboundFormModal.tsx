@@ -1692,7 +1692,7 @@ export default function OutboundFormModal({
                                       label={t('pages.xray.outboundForm.maxReuseTimes')}
                                       name={['streamSettings', 'xhttpSettings', 'xmux', 'cMaxReuseTimes']}
                                     >
-                                      <Input />
+                                      <Input placeholder="64-128" />
                                     </Form.Item>
                                     <Form.Item
                                       label={t('pages.xray.outboundForm.maxRequestTimes')}
@@ -1710,7 +1710,7 @@ export default function OutboundFormModal({
                                       label={t('pages.xray.outboundForm.keepAlivePeriod')}
                                       name={['streamSettings', 'xhttpSettings', 'xmux', 'hKeepAlivePeriod']}
                                     >
-                                      <InputNumber min={0} style={{ width: '100%' }} />
+                                      <InputNumber placeholder="0" min={0} style={{ width: '100%' }} />
                                     </Form.Item>
                                   </>
                                 );

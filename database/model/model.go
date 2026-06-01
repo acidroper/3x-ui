@@ -41,17 +41,17 @@ type User struct {
 
 // Inbound represents an Xray inbound configuration with traffic statistics and settings.
 type Inbound struct {
-	Id                   int                  `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`                                                    // Unique identifier
-	UserId               int                  `json:"-"`                                                                                               // Associated user ID
-	Up                   int64                `json:"up" form:"up"`                                                                                    // Upload traffic in bytes
-	Down                 int64                `json:"down" form:"down"`                                                                                // Download traffic in bytes
-	Total                int64                `json:"total" form:"total"`                                                                              // Total traffic limit in bytes
-	Remark               string               `json:"remark" form:"remark"`                                                                            // Human-readable remark
-	Enable               bool                 `json:"enable" form:"enable" gorm:"index:idx_enable_traffic_reset,priority:1"`                           // Whether the inbound is enabled
-	ExpiryTime           int64                `json:"expiryTime" form:"expiryTime"`                                                                    // Expiration timestamp
+	Id                   int                  `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`                                                                                                                 // Unique identifier
+	UserId               int                  `json:"-"`                                                                                                                                                            // Associated user ID
+	Up                   int64                `json:"up" form:"up"`                                                                                                                                                 // Upload traffic in bytes
+	Down                 int64                `json:"down" form:"down"`                                                                                                                                             // Download traffic in bytes
+	Total                int64                `json:"total" form:"total"`                                                                                                                                           // Total traffic limit in bytes
+	Remark               string               `json:"remark" form:"remark"`                                                                                                                                         // Human-readable remark
+	Enable               bool                 `json:"enable" form:"enable" gorm:"index:idx_enable_traffic_reset,priority:1"`                                                                                        // Whether the inbound is enabled
+	ExpiryTime           int64                `json:"expiryTime" form:"expiryTime"`                                                                                                                                 // Expiration timestamp
 	TrafficReset         string               `json:"trafficReset" form:"trafficReset" gorm:"default:never;index:idx_enable_traffic_reset,priority:2" validate:"omitempty,oneof=never hourly daily weekly monthly"` // Traffic reset schedule
-	LastTrafficResetTime int64                `json:"lastTrafficResetTime" form:"lastTrafficResetTime" gorm:"default:0"`                               // Last traffic reset timestamp
-	ClientStats          []xray.ClientTraffic `gorm:"foreignKey:InboundId;references:Id" json:"clientStats" form:"clientStats"`                        // Client traffic statistics
+	LastTrafficResetTime int64                `json:"lastTrafficResetTime" form:"lastTrafficResetTime" gorm:"default:0"`                                                                                            // Last traffic reset timestamp
+	ClientStats          []xray.ClientTraffic `gorm:"foreignKey:InboundId;references:Id" json:"clientStats" form:"clientStats"`                                                                                     // Client traffic statistics
 
 	// Xray configuration fields
 	Listen         string   `json:"listen" form:"listen"`
@@ -434,10 +434,11 @@ type Client struct {
 	TgID       int64          `json:"tgId" form:"tgId"`             // Telegram user ID for notifications
 	SubID      string         `json:"subId" form:"subId"`           // Subscription identifier
 	Group      string         `json:"group,omitempty" form:"group"` // Logical grouping label
-	Comment    string         `json:"comment" form:"comment"`       // Client comment
-	Reset      int            `json:"reset" form:"reset"`           // Reset period in days
-	CreatedAt  int64          `json:"created_at,omitempty"`         // Creation timestamp
-	UpdatedAt  int64          `json:"updated_at,omitempty"`         // Last update timestamp
+	Comment      string         `json:"comment" form:"comment"`       // Client comment
+	Reset        int            `json:"reset" form:"reset"`           // Reset period in days
+	CreatedAt    int64          `json:"created_at,omitempty"`         // Creation timestamp
+	UpdatedAt    int64          `json:"updated_at,omitempty"`         // Last update timestamp
+	XmuxOverride map[string]any `json:"xmuxOverride,omitempty"`       // Client-side xmux override
 }
 
 type ClientRecord struct {
@@ -456,10 +457,11 @@ type ClientRecord struct {
 	Enable     bool   `json:"enable" gorm:"default:true"`
 	TgID       int64  `json:"tgId" gorm:"column:tg_id"`
 	Group      string `json:"group" gorm:"column:group_name;default:''"`
-	Comment    string `json:"comment"`
-	Reset      int    `json:"reset" gorm:"default:0"`
-	CreatedAt  int64  `json:"createdAt" gorm:"autoCreateTime:milli"`
-	UpdatedAt  int64  `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+	Comment      string `json:"comment"`
+	Reset        int    `json:"reset" gorm:"default:0"`
+	CreatedAt    int64  `json:"createdAt" gorm:"autoCreateTime:milli"`
+	UpdatedAt    int64  `json:"updatedAt" gorm:"autoUpdateTime:milli"`
+	XmuxOverride string `json:"xmuxOverride" gorm:"column:xmux_override"`
 }
 
 func (ClientRecord) TableName() string { return "clients" }
@@ -480,10 +482,12 @@ func (r ClientRecord) MarshalJSON() ([]byte, error) {
 	type alias ClientRecord
 	return json.Marshal(struct {
 		alias
-		Reverse json.RawMessage `json:"reverse"`
+		Reverse      json.RawMessage `json:"reverse"`
+		XmuxOverride json.RawMessage `json:"xmuxOverride"`
 	}{
-		alias:   alias(r),
-		Reverse: jsonStringFieldToRaw(r.Reverse),
+		alias:        alias(r),
+		Reverse:      jsonStringFieldToRaw(r.Reverse),
+		XmuxOverride: jsonStringFieldToRaw(r.XmuxOverride),
 	})
 }
 
@@ -493,7 +497,8 @@ func (r *ClientRecord) UnmarshalJSON(data []byte) error {
 	type alias ClientRecord
 	aux := struct {
 		*alias
-		Reverse json.RawMessage `json:"reverse"`
+		Reverse      json.RawMessage `json:"reverse"`
+		XmuxOverride json.RawMessage `json:"xmuxOverride"`
 	}{
 		alias: (*alias)(r),
 	}
@@ -501,6 +506,7 @@ func (r *ClientRecord) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	r.Reverse = jsonStringFieldFromRaw(aux.Reverse)
+	r.XmuxOverride = jsonStringFieldFromRaw(aux.XmuxOverride)
 	return nil
 }
 
@@ -513,11 +519,6 @@ type ClientInbound struct {
 
 func (ClientInbound) TableName() string { return "client_inbounds" }
 
-// InboundFallback is one routing rule on a master inbound's
-// settings.fallbacks array. The master is always a VLESS or Trojan
-// inbound on TCP transport with TLS or Reality. The child is any other
-// inbound — its listen+port becomes the fallback dest, with optional
-// SNI/ALPN/path match criteria pulled from the same row.
 type InboundFallback struct {
 	Id        int    `json:"id" gorm:"primaryKey;autoIncrement"`
 	MasterId  int    `json:"masterId" gorm:"index;not null;column:master_id"`
@@ -525,6 +526,7 @@ type InboundFallback struct {
 	Name      string `json:"name"`
 	Alpn      string `json:"alpn"`
 	Path      string `json:"path"`
+	Dest      string `json:"dest"`
 	Xver      int    `json:"xver"`
 	SortOrder int    `json:"sortOrder" gorm:"default:0;column:sort_order"`
 }
@@ -556,6 +558,11 @@ func (c *Client) ToRecord() *ClientRecord {
 			rec.Reverse = string(b)
 		}
 	}
+	if c.XmuxOverride != nil {
+		if b, err := json.Marshal(c.XmuxOverride); err == nil {
+			rec.XmuxOverride = string(b)
+		}
+	}
 	return rec
 }
 
@@ -583,6 +590,12 @@ func (r *ClientRecord) ToClient() *Client {
 		var rev ClientReverse
 		if err := json.Unmarshal([]byte(r.Reverse), &rev); err == nil {
 			c.Reverse = &rev
+		}
+	}
+	if r.XmuxOverride != "" {
+		var xmux map[string]any
+		if err := json.Unmarshal([]byte(r.XmuxOverride), &xmux); err == nil {
+			c.XmuxOverride = xmux
 		}
 	}
 	return c

@@ -189,6 +189,77 @@ func (s *SubJsonService) getConfig(inbound *model.Inbound, client model.Client, 
 		if hasExternalProxy {
 			applyExternalProxyTLSToStream(extPrxy, newStream, security)
 		}
+
+		if network, _ := newStream["network"].(string); network == "xhttp" {
+			if oldXhttp, ok := newStream["xhttpSettings"].(map[string]any); ok {
+				xhttp := cloneMap(oldXhttp)
+				newStream["xhttpSettings"] = xhttp
+
+				var finalXmux map[string]any
+				if uiXmuxEnabled, _ := xhttp["uiXmuxEnabled"].(bool); uiXmuxEnabled {
+					if uiXmuxSettings, ok := xhttp["uiXmuxSettings"].(map[string]any); ok {
+						finalXmux = make(map[string]any)
+						for k, v := range uiXmuxSettings {
+							finalXmux[k] = v
+						}
+					}
+				}
+
+				if string(inbound.Protocol) == "vless" {
+					var settingsObj map[string]any
+					if err := json.Unmarshal([]byte(inbound.Settings), &settingsObj); err == nil {
+						if rawClients, ok := settingsObj["clients"].([]any); ok {
+							for _, rc := range rawClients {
+								if rcMap, ok := rc.(map[string]any); ok && rcMap["email"] == client.Email {
+									if xmuxOverride, ok := rcMap["xmuxOverride"].(map[string]any); ok {
+										if enabled, _ := xmuxOverride["enabled"].(bool); enabled {
+											if finalXmux == nil {
+												finalXmux = make(map[string]any)
+											}
+											for k, v := range xmuxOverride {
+												if k != "enabled" {
+													finalXmux[k] = v
+												}
+											}
+										}
+									}
+									break
+								}
+							}
+						}
+					}
+				}
+
+				if finalXmux != nil {
+					if val, exists := finalXmux["maxConnections"]; exists && val != "" && val != 0 && val != "0" {
+						delete(finalXmux, "maxConcurrency")
+					} else if val, exists := finalXmux["maxConcurrency"]; exists && val != "" && val != 0 && val != "0" {
+						delete(finalXmux, "maxConnections")
+					}
+
+					cleanXmux := make(map[string]any)
+					for k, v := range finalXmux {
+						if v == nil || k == "enabled" {
+							continue
+						}
+						if strVal, isStr := v.(string); isStr && (strVal == "" || strVal == "0") {
+							continue
+						}
+						if numVal, isNum := v.(float64); isNum && numVal == 0 {
+							continue
+						}
+						cleanXmux[k] = v
+					}
+					if len(cleanXmux) > 0 {
+						xhttp["xmux"] = cleanXmux
+					}
+				}
+
+				delete(xhttp, "uiXmuxEnabled")
+				delete(xhttp, "uiXmuxSettings")
+			}
+		}
+
 		streamSettings, _ := json.MarshalIndent(newStream, "", "  ")
 
 		var newOutbounds []json_util.RawMessage

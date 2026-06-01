@@ -230,7 +230,10 @@ func (s *ClientService) SyncInbound(tx *gorm.DB, inboundId int, clients []model.
 			}
 			if incoming.Reverse != "" {
 				row.Reverse = incoming.Reverse
+			} else {
+				row.Reverse = ""
 			}
+			row.XmuxOverride = incoming.XmuxOverride
 			row.SubID = incoming.SubID
 			row.LimitIP = incoming.LimitIP
 			row.TotalGB = incoming.TotalGB

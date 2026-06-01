@@ -250,6 +250,7 @@ type InboundOption struct {
 	Protocol       string `json:"protocol"`
 	Port           int    `json:"port"`
 	TlsFlowCapable bool   `json:"tlsFlowCapable"`
+	Network        string `json:"network"`
 }
 
 // GetInboundOptions returns the picker-sized projection of the user's inbounds.
@@ -276,6 +277,12 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 	}
 	out := make([]InboundOption, 0, len(rows))
 	for _, r := range rows {
+		var stream struct {
+			Network string `json:"network"`
+		}
+		if r.StreamSettings != "" {
+			_ = json.Unmarshal([]byte(r.StreamSettings), &stream)
+		}
 		out = append(out, InboundOption{
 			Id:             r.Id,
 			Remark:         r.Remark,
@@ -283,6 +290,7 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 			Protocol:       r.Protocol,
 			Port:           r.Port,
 			TlsFlowCapable: inboundCanEnableTlsFlow(r.Protocol, r.StreamSettings),
+			Network:        stream.Network,
 		})
 	}
 	return out, nil

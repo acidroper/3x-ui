@@ -16,12 +16,12 @@ export type XHttpMode = z.infer<typeof XHttpModeSchema>;
 // parallel requests over a small pool of upstream connections. Fields
 // are strings because they accept dash-range values like '16-32'.
 export const XHttpXmuxSchema = z.object({
-  maxConcurrency: z.string().default('16-32'),
-  maxConnections: z.union([z.string(), z.number()]).default(0),
-  cMaxReuseTimes: z.union([z.string(), z.number()]).default(0),
-  hMaxRequestTimes: z.string().default('600-900'),
-  hMaxReusableSecs: z.string().default('1800-3000'),
-  hKeepAlivePeriod: z.number().int().min(0).default(0),
+  maxConcurrency: z.union([z.string(), z.number()]).optional(),
+  maxConnections: z.union([z.string(), z.number()]).optional(),
+  cMaxReuseTimes: z.union([z.string(), z.number()]).optional(),
+  hMaxRequestTimes: z.union([z.string(), z.number()]).optional(),
+  hMaxReusableSecs: z.union([z.string(), z.number()]).optional(),
+  hKeepAlivePeriod: z.union([z.string(), z.number()]).optional(),
 });
 export type XHttpXmux = z.infer<typeof XHttpXmuxSchema>;
 
@@ -59,5 +59,8 @@ export const XHttpStreamSettingsSchema = z.object({
   // Never present on the wire — outbound modal strips it via the
   // form-to-wire adapter.
   enableXmux: z.boolean().default(false),
+  // Inbound UI settings for fallback client xmux configurations.
+  uiXmuxEnabled: z.boolean().optional(),
+  uiXmuxSettings: XHttpXmuxSchema.optional(),
 });
 export type XHttpStreamSettings = z.infer<typeof XHttpStreamSettingsSchema>;

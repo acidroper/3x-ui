@@ -14,6 +14,7 @@ import {
   Switch,
   Tag,
   message,
+  Divider,
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -91,6 +92,15 @@ interface FormState {
   comment: string;
   enable: boolean;
   inboundIds: number[];
+  xmuxOverride: {
+    enabled: boolean;
+    maxConcurrency: string;
+    maxConnections: string;
+    cMaxReuseTimes: string;
+    hMaxRequestTimes: string;
+    hMaxReusableSecs: string;
+    hKeepAlivePeriod: string;
+  };
 }
 
 function emptyForm(): FormState {
@@ -114,6 +124,15 @@ function emptyForm(): FormState {
     comment: '',
     enable: true,
     inboundIds: [],
+    xmuxOverride: {
+      enabled: false,
+      maxConcurrency: '',
+      maxConnections: '',
+      cMaxReuseTimes: '',
+      hMaxRequestTimes: '',
+      hMaxReusableSecs: '',
+      hKeepAlivePeriod: '',
+    },
   };
 }
 
@@ -176,6 +195,15 @@ export default function ClientFormModal({
         comment: client.comment || '',
         enable: !!client.enable,
         inboundIds: Array.isArray(attachedIds) ? [...attachedIds] : [],
+        xmuxOverride: {
+          enabled: !!(client.xmuxOverride?.enabled),
+          maxConcurrency: String(client.xmuxOverride?.maxConcurrency ?? ''),
+          maxConnections: String(client.xmuxOverride?.maxConnections ?? ''),
+          cMaxReuseTimes: String(client.xmuxOverride?.cMaxReuseTimes ?? ''),
+          hMaxRequestTimes: String(client.xmuxOverride?.hMaxRequestTimes ?? ''),
+          hMaxReusableSecs: String(client.xmuxOverride?.hMaxReusableSecs ?? ''),
+          hKeepAlivePeriod: String(client.xmuxOverride?.hKeepAlivePeriod ?? ''),
+        },
       };
       if (et < 0) {
         next.delayedStart = true;
@@ -255,6 +283,27 @@ export default function ClientFormModal({
     }
   }, [showReverseTag, form.reverseTag]);
 
+  const xmuxCapableIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const row of inbounds || []) {
+      if (row && row.protocol === 'vless' && row.network === 'xhttp') {
+        ids.add(row.id);
+      }
+    }
+    return ids;
+  }, [inbounds]);
+
+  const showXmuxOverride = useMemo(
+    () => (form.inboundIds || []).some((id) => xmuxCapableIds.has(id)),
+    [form.inboundIds, xmuxCapableIds],
+  );
+
+  useEffect(() => {
+    if (!showXmuxOverride && form.xmuxOverride?.enabled) {
+      update('xmuxOverride', { ...form.xmuxOverride, enabled: false });
+    }
+  }, [showXmuxOverride, form.xmuxOverride]);
+
   const inboundOptions = useMemo(
     () => (inbounds || [])
       .filter((ib) => MULTI_CLIENT_PROTOCOLS.has(ib.protocol || ''))
@@ -315,6 +364,7 @@ export default function ClientFormModal({
       comment: form.comment,
       enable: form.enable,
       inboundIds: form.inboundIds,
+      xmuxOverride: form.xmuxOverride,
     });
     if (!validated.success) {
       const issue = validated.error.issues[0];
@@ -339,6 +389,7 @@ export default function ClientFormModal({
       tgId: Number(form.tgId) || 0,
       comment: form.comment,
       enable: !!form.enable,
+      xmuxOverride: showXmuxOverride ? { ...form.xmuxOverride } : undefined,
     };
     const reverseTag = showReverseTag ? (form.reverseTag || '').trim() : '';
     if (reverseTag) {
@@ -483,6 +534,26 @@ export default function ClientFormModal({
               </Form.Item>
             </Col>
           </Row>
+
+        {showXmuxOverride && (
+          <>
+            <Form.Item label="XMUX Override">
+              <Switch checked={form.xmuxOverride.enabled} onChange={(v) => update('xmuxOverride', { ...form.xmuxOverride, enabled: v })} />
+            </Form.Item>
+            {form.xmuxOverride.enabled && (
+              <>
+                <Divider style={{ margin: '5px 0 0' }}>XMUX (client-side)</Divider>
+                <Form.Item label="maxConcurrency"><Input value={form.xmuxOverride.maxConcurrency} placeholder="16-32" disabled={!!form.xmuxOverride.maxConnections && form.xmuxOverride.maxConnections !== '0' && !(!!form.xmuxOverride.maxConcurrency && form.xmuxOverride.maxConcurrency !== '0')} onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, maxConcurrency: e.target.value })} /></Form.Item>
+                <Form.Item label="maxConnections"><Input value={form.xmuxOverride.maxConnections} placeholder="0" disabled={!!form.xmuxOverride.maxConcurrency && form.xmuxOverride.maxConcurrency !== '0' && !(!!form.xmuxOverride.maxConnections && form.xmuxOverride.maxConnections !== '0')} onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, maxConnections: e.target.value })} /></Form.Item>
+                <Form.Item label="cMaxReuseTimes"><Input value={form.xmuxOverride.cMaxReuseTimes} placeholder="64-128" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, cMaxReuseTimes: e.target.value })} /></Form.Item>
+                <Form.Item label="hMaxRequestTimes"><Input value={form.xmuxOverride.hMaxRequestTimes} placeholder="700-900" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hMaxRequestTimes: e.target.value })} /></Form.Item>
+                <Form.Item label="hMaxReusableSecs"><Input value={form.xmuxOverride.hMaxReusableSecs} placeholder="1800-3000" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hMaxReusableSecs: e.target.value })} /></Form.Item>
+                <Form.Item label="hKeepAlivePeriod"><Input value={form.xmuxOverride.hKeepAlivePeriod} placeholder="0" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hKeepAlivePeriod: e.target.value })} /></Form.Item>
+                <Divider style={{ margin: '5px 0' }} />
+              </>
+            )}
+          </>
+        )}
 
           <Row gutter={16}>
             <Col xs={24} md={12}>

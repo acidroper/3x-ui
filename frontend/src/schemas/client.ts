@@ -32,6 +32,15 @@ export const ClientRecordSchema = z.object({
   inboundIds: nullableNumberArray.optional(),
   traffic: ClientTrafficSchema.nullable().optional(),
   reverse: z.object({ tag: z.string().optional() }).loose().nullable().optional(),
+  xmuxOverride: z.object({
+    enabled: z.boolean().optional(),
+    maxConcurrency: z.union([z.string(), z.number()]).optional(),
+    maxConnections: z.union([z.string(), z.number()]).optional(),
+    cMaxReuseTimes: z.union([z.string(), z.number()]).optional(),
+    hMaxRequestTimes: z.union([z.string(), z.number()]).optional(),
+    hMaxReusableSecs: z.union([z.string(), z.number()]).optional(),
+    hKeepAlivePeriod: z.union([z.string(), z.number()]).optional(),
+  }).loose().optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
 }).loose();
@@ -42,6 +51,7 @@ export const InboundOptionSchema = z.object({
   protocol: z.string().optional(),
   port: z.number().optional(),
   tlsFlowCapable: z.boolean().optional(),
+  network: z.string().optional(),
 }).loose();
 
 export const InboundOptionsSchema = z.array(InboundOptionSchema);
@@ -137,6 +147,15 @@ export const ClientFormSchema = z.object({
   comment: z.string(),
   enable: z.boolean(),
   inboundIds: z.array(z.number()),
+  xmuxOverride: z.object({
+    enabled: z.boolean(),
+    maxConcurrency: z.string(),
+    maxConnections: z.string(),
+    cMaxReuseTimes: z.string(),
+    hMaxRequestTimes: z.string(),
+    hMaxReusableSecs: z.string(),
+    hKeepAlivePeriod: z.string(),
+  }),
 });
 
 export const ClientCreateFormSchema = ClientFormSchema.extend({
@@ -168,6 +187,15 @@ export const ClientBulkAddFormSchema = z.object({
   expiryTime: z.number(),
   reset: z.number().int().min(0),
   inboundIds: z.array(z.number()).min(1, 'pages.clients.selectInbound'),
+  xmuxOverride: z.object({
+    enabled: z.boolean(),
+    maxConcurrency: z.string(),
+    maxConnections: z.string(),
+    cMaxReuseTimes: z.string(),
+    hMaxRequestTimes: z.string(),
+    hMaxReusableSecs: z.string(),
+    hKeepAlivePeriod: z.string(),
+  }),
 });
 
 export type ClientRecord = z.infer<typeof ClientRecordSchema>;

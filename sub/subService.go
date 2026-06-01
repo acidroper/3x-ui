@@ -356,6 +356,79 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 	if finalmask, ok := stream["finalmask"].(map[string]any); ok {
 		applyFinalMaskParams(finalmask, params)
 	}
+
+	if streamNetwork == "xhttp" {
+		xhttp, _ := stream["xhttpSettings"].(map[string]any)
+		var finalXmux map[string]any
+
+		uiXmuxEnabled, _ := xhttp["uiXmuxEnabled"].(bool)
+		if uiXmuxEnabled {
+			if uiXmuxSettings, ok := xhttp["uiXmuxSettings"].(map[string]any); ok {
+				finalXmux = make(map[string]any)
+				for k, v := range uiXmuxSettings {
+					finalXmux[k] = v
+				}
+			}
+		}
+
+		rawClients, ok := settings["clients"].([]any)
+		if ok {
+			for _, rc := range rawClients {
+				rcMap, ok := rc.(map[string]any)
+				if ok && rcMap["email"] == email {
+					if xmuxOverride, ok := rcMap["xmuxOverride"].(map[string]any); ok {
+						if enabled, _ := xmuxOverride["enabled"].(bool); enabled {
+							if finalXmux == nil {
+								finalXmux = make(map[string]any)
+							}
+							for k, v := range xmuxOverride {
+								if k != "enabled" {
+									finalXmux[k] = v
+								}
+							}
+						}
+					}
+					break
+				}
+			}
+		}
+
+		if finalXmux != nil {
+			if val, exists := finalXmux["maxConnections"]; exists && val != "" && val != 0 && val != "0" {
+				delete(finalXmux, "maxConcurrency")
+			} else if val, exists := finalXmux["maxConcurrency"]; exists && val != "" && val != 0 && val != "0" {
+				delete(finalXmux, "maxConnections")
+			}
+
+			cleanXmux := make(map[string]any)
+			for k, v := range finalXmux {
+				if v == nil || k == "enabled" {
+					continue
+				}
+				if strVal, isStr := v.(string); isStr && (strVal == "" || strVal == "0") {
+					continue
+				}
+				if numVal, isNum := v.(float64); isNum && numVal == 0 {
+					continue
+				}
+				cleanXmux[k] = v
+			}
+			if len(cleanXmux) > 0 {
+				var extraData map[string]any
+				if existing, ok := params["extra"]; ok && existing != "" {
+					if err := json.Unmarshal([]byte(existing), &extraData); err != nil {
+						extraData = make(map[string]any)
+					}
+				} else {
+					extraData = make(map[string]any)
+				}
+				extraData["xmux"] = cleanXmux
+				if bz, err := json.Marshal(extraData); err == nil {
+					params["extra"] = string(bz)
+				}
+			}
+		}
+	}
 	security, _ := stream["security"].(string)
 	switch security {
 	case "tls":
@@ -989,9 +1062,6 @@ func applyExternalProxyTLSToStream(ep map[string]any, stream map[string]any, sec
 func externalProxySNI(ep map[string]any) (string, bool) {
 	if sni, ok := ep["sni"].(string); ok && sni != "" {
 		return sni, true
-	}
-	if dest, ok := ep["dest"].(string); ok && dest != "" {
-		return dest, true
 	}
 	return "", false
 }

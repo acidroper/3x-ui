@@ -365,13 +365,21 @@ export default function InboundFormModal({
       return;
     }
     setFallbacks(
-      (msg.obj as { childId: number; name?: string; alpn?: string; path?: string; xver?: number }[])
+      (msg.obj as {
+        childId: number;
+        name?: string;
+        alpn?: string;
+        path?: string;
+        dest?: string;
+        xver?: number;
+      }[])
         .map((r) => ({
           rowKey: `fb-${++fallbackKeyRef.current}`,
           childId: r.childId,
           name: r.name || '',
           alpn: r.alpn || '',
           path: r.path || '',
+          dest: r.dest || '',
           xver: r.xver || 0,
         })),
     );
@@ -385,6 +393,7 @@ export default function InboundFormModal({
         name: c.name,
         alpn: c.alpn,
         path: c.path,
+        dest: c.dest,
         xver: Number(c.xver) || 0,
         sortOrder: i,
       })),
@@ -437,6 +446,7 @@ export default function InboundFormModal({
       name: '',
       alpn: '',
       path: '',
+      dest: '',
       xver: 0,
     }]);
   };
@@ -445,11 +455,11 @@ export default function InboundFormModal({
     setFallbacks((prev) => prev.map((r) => {
       if (r.rowKey !== rowKey) return r;
       // When the picker selects a new child inbound and the row hasn't
-      // been hand-edited yet (sni/alpn/path all blank, xver = 0), pull
-      // the SNI/ALPN/Path defaults off that child. Operators who
+      // been hand-edited yet (sni/alpn/path/dest all blank, xver = 0),
+      // pull the SNI/ALPN/Path defaults off that child. Operators who
       // intentionally typed values keep them — we only fill the empties.
       if (typeof patch.childId === 'number' && patch.childId !== r.childId) {
-        const isPristine = !r.name && !r.alpn && !r.path && r.xver === 0;
+        const isPristine = !r.name && !r.alpn && !r.path && !r.dest && r.xver === 0;
         if (isPristine) return { ...r, ...patch, ...deriveFallbackDefaults(patch.childId) };
       }
       return { ...r, ...patch };
@@ -490,6 +500,7 @@ export default function InboundFormModal({
             name: derived.name ?? '',
             alpn: derived.alpn ?? '',
             path: derived.path ?? '',
+            dest: '',
             xver: derived.xver ?? 0,
           };
         });
@@ -1078,6 +1089,12 @@ export default function InboundFormModal({
               placeholder="/"
               value={record.path}
               onChange={(e) => updateFallback(record.rowKey, { path: e.target.value })}
+            />
+            <InputAddon>Dest</InputAddon>
+            <Input
+              placeholder={t('pages.inbounds.fallbacks.destPlaceholder') || 'auto'}
+              value={record.dest}
+              onChange={(e) => updateFallback(record.rowKey, { dest: e.target.value })}
             />
             <InputAddon>xver</InputAddon>
             <InputNumber
@@ -1966,6 +1983,12 @@ export default function InboundFormModal({
             <Input />
           </Form.Item>
           <Form.Item
+            name={['streamSettings', 'xhttpSettings', 'headers']}
+            label={t('pages.inbounds.form.headers')}
+          >
+            <HeaderMapEditor mode="v1" />
+          </Form.Item>
+          <Form.Item
             name={['streamSettings', 'xhttpSettings', 'uplinkHTTPMethod']}
             label={t('pages.inbounds.form.uplinkHttpMethod')}
           >
@@ -2107,6 +2130,64 @@ export default function InboundFormModal({
             valuePropName="checked"
           >
             <Switch />
+          </Form.Item>
+          <Form.Item
+            name={['streamSettings', 'xhttpSettings', 'uiXmuxEnabled']}
+            label="XMUX (client-side)"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item shouldUpdate noStyle>
+            {() => {
+              if (!form.getFieldValue(['streamSettings', 'xhttpSettings', 'uiXmuxEnabled'])) return null;
+              
+              const maxConn = form.getFieldValue(['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'maxConnections']);
+              const maxConc = form.getFieldValue(['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'maxConcurrency']);
+              const isConnActive = !!maxConn && String(maxConn) !== '0';
+              const isConcActive = !!maxConc && String(maxConc) !== '0';
+
+              return (
+                <>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.maxConcurrency')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'maxConcurrency']}
+                  >
+                    <Input placeholder="16-32" disabled={isConnActive && !isConcActive} />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.maxConnections')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'maxConnections']}
+                  >
+                    <Input placeholder="0" disabled={isConcActive && !isConnActive} />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.maxReuseTimes')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'cMaxReuseTimes']}
+                  >
+                    <Input placeholder="64-128" />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.maxRequestTimes')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'hMaxRequestTimes']}
+                  >
+                    <Input placeholder="600-900" />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.maxReusableSecs')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'hMaxReusableSecs']}
+                  >
+                    <Input placeholder="1800-3000" />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('pages.xray.outboundForm.keepAlivePeriod')}
+                    name={['streamSettings', 'xhttpSettings', 'uiXmuxSettings', 'hKeepAlivePeriod']}
+                  >
+                    <InputNumber placeholder="0" min={0} style={{ width: '100%' }} />
+                  </Form.Item>
+                </>
+              );
+            }}
           </Form.Item>
         </>
       )}

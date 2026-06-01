@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, message } from 'antd';
+import { AutoComplete, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, message, Divider } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -45,6 +45,15 @@ function emptyForm(): FormState {
     expiryTime: 0,
     reset: 0,
     inboundIds: [],
+    xmuxOverride: {
+      enabled: false,
+      maxConcurrency: '',
+      maxConnections: '',
+      cMaxReuseTimes: '',
+      hMaxRequestTimes: '',
+      hMaxReusableSecs: '',
+      hKeepAlivePeriod: '',
+    },
   };
 }
 
@@ -95,6 +104,28 @@ export default function ClientBulkAddModal({
       update('flow', '');
     }
   }, [showFlow, form.flow]);
+
+  const xmuxCapableIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const row of inbounds || []) {
+      // row.obj might be used in the new version, but let's check row directly
+      if (row && row.protocol === 'vless' && row.network === 'xhttp') {
+        ids.add(row.id);
+      }
+    }
+    return ids;
+  }, [inbounds]);
+
+  const showXmuxOverride = useMemo(
+    () => (form.inboundIds || []).some((id) => xmuxCapableIds.has(id)),
+    [form.inboundIds, xmuxCapableIds],
+  );
+
+  useEffect(() => {
+    if (!showXmuxOverride && form.xmuxOverride.enabled) {
+      update('xmuxOverride', { ...form.xmuxOverride, enabled: false });
+    }
+  }, [showXmuxOverride, form.xmuxOverride]);
 
   const inboundOptions = useMemo(
     () => (inbounds || [])
@@ -163,6 +194,7 @@ export default function ClientBulkAddModal({
           group: form.group,
           comment: form.comment,
           enable: true,
+          xmuxOverride: showXmuxOverride ? { ...form.xmuxOverride } : undefined,
         },
         inboundIds: form.inboundIds,
       }));
@@ -226,6 +258,26 @@ export default function ClientBulkAddModal({
               ]}
             />
           </Form.Item>
+
+        {showXmuxOverride && (
+          <>
+            <Form.Item label="XMUX Override">
+              <Switch checked={form.xmuxOverride.enabled} onChange={(v) => update('xmuxOverride', { ...form.xmuxOverride, enabled: v })} />
+            </Form.Item>
+            {form.xmuxOverride.enabled && (
+              <>
+                <Divider style={{ margin: '5px 0 0' }}>XMUX (client-side)</Divider>
+                <Form.Item label="maxConcurrency"><Input value={form.xmuxOverride.maxConcurrency} placeholder="16-32" disabled={!!form.xmuxOverride.maxConnections && form.xmuxOverride.maxConnections !== '0' && !(!!form.xmuxOverride.maxConcurrency && form.xmuxOverride.maxConcurrency !== '0')} onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, maxConcurrency: e.target.value })} /></Form.Item>
+                <Form.Item label="maxConnections"><Input value={form.xmuxOverride.maxConnections} placeholder="0" disabled={!!form.xmuxOverride.maxConcurrency && form.xmuxOverride.maxConcurrency !== '0' && !(!!form.xmuxOverride.maxConnections && form.xmuxOverride.maxConnections !== '0')} onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, maxConnections: e.target.value })} /></Form.Item>
+                <Form.Item label="cMaxReuseTimes"><Input value={form.xmuxOverride.cMaxReuseTimes} placeholder="64-128" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, cMaxReuseTimes: e.target.value })} /></Form.Item>
+                <Form.Item label="hMaxRequestTimes"><Input value={form.xmuxOverride.hMaxRequestTimes} placeholder="700-900" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hMaxRequestTimes: e.target.value })} /></Form.Item>
+                <Form.Item label="hMaxReusableSecs"><Input value={form.xmuxOverride.hMaxReusableSecs} placeholder="1800-3000" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hMaxReusableSecs: e.target.value })} /></Form.Item>
+                <Form.Item label="hKeepAlivePeriod"><Input value={form.xmuxOverride.hKeepAlivePeriod} placeholder="0" onChange={(e) => update('xmuxOverride', { ...form.xmuxOverride, hKeepAlivePeriod: e.target.value })} /></Form.Item>
+                <Divider style={{ margin: '5px 0' }} />
+              </>
+            )}
+          </>
+        )}
 
           {form.emailMethod > 1 && (
             <>
