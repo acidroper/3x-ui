@@ -4,6 +4,7 @@
 .claude/
 .cache/
 .sync*
+.antigravitycli/
 
 # Ignore log files
 *.log
