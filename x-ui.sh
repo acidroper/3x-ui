@@ -69,8 +69,17 @@ echo "The OS release is: $release"
 os_version=""
 os_version=$(grep "^VERSION_ID" /etc/os-release | cut -d '=' -f2 | tr -d '"' | tr -d '.')
 
+running_in_docker="false"
+if [[ -f /.dockerenv ]] || [[ "${XUI_IN_DOCKER}" == "true" ]]; then
+    running_in_docker="true"
+fi
+
 # Declare Variables
-xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
+if [[ "${running_in_docker}" == "true" ]]; then
+    xui_folder="${XUI_MAIN_FOLDER:=/app}"
+else
+    xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
+fi
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 log_folder="${XUI_LOG_FOLDER:=/var/log/x-ui}"
 mkdir -p "${log_folder}"
@@ -400,6 +409,15 @@ start() {
         echo ""
         LOGI "Panel is running, No need to start again, If you need to restart, please select restart"
     else
+        if [[ "${running_in_docker}" == "true" ]]; then
+            LOGE "Panel process is not running inside this container."
+            LOGI "In Docker the panel is the container's main process. Restart the container to bring it back up:"
+            LOGI "  docker restart <container_name>"
+            if [[ $# == 0 ]]; then
+                before_show_menu
+            fi
+            return 0
+        fi
         if [[ $release == "alpine" ]]; then
             rc-service x-ui start
         else
@@ -425,6 +443,15 @@ stop() {
         echo ""
         LOGI "Panel stopped, No need to stop again!"
     else
+        if [[ "${running_in_docker}" == "true" ]]; then
+            LOGI "In Docker the panel runs as the container's main process."
+            LOGI "To stop it, stop the container from the host:"
+            LOGI "  docker stop <container_name>"
+            if [[ $# == 0 ]]; then
+                before_show_menu
+            fi
+            return 0
+        fi
         if [[ $release == "alpine" ]]; then
             rc-service x-ui stop
         else
@@ -445,6 +472,26 @@ stop() {
 }
 
 restart() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        if signal_xui HUP; then
+            sleep 1
+            signal_xui USR1
+            LOGI "Restart signal sent to the panel and xray-core."
+        else
+            LOGE "Could not find the running panel process to signal."
+        fi
+        sleep 2
+        check_status
+        if [[ $? == 0 ]]; then
+            LOGI "x-ui and xray Restarted successfully"
+        else
+            LOGE "Panel restart failed, Please check the log information later"
+        fi
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
     if [[ $release == "alpine" ]]; then
         rc-service x-ui restart
     else
@@ -463,6 +510,19 @@ restart() {
 }
 
 restart_xray() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        if signal_xui USR1; then
+            LOGI "xray-core Restart signal sent successfully, Please check the log information to confirm whether xray restarted successfully"
+        else
+            LOGE "Could not find the running panel process to signal."
+        fi
+        sleep 2
+        show_xray_status
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
     if [[ $release == "alpine" ]]; then
         rc-service x-ui reload
     else
@@ -477,6 +537,13 @@ restart_xray() {
 }
 
 status() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        show_status
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
     if [[ $release == "alpine" ]]; then
         rc-service x-ui status
     else
@@ -488,6 +555,14 @@ status() {
 }
 
 enable() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        LOGI "Autostart is controlled by the Docker restart policy (e.g. 'restart: unless-stopped' in docker-compose.yml)."
+        LOGI "There is no service to enable inside the container."
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
     if [[ $release == "alpine" ]]; then
         rc-update add x-ui default
     else
@@ -505,6 +580,14 @@ enable() {
 }
 
 disable() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        LOGI "Autostart is controlled by the Docker restart policy (e.g. 'restart: unless-stopped' in docker-compose.yml)."
+        LOGI "Set 'restart: no' for the container on the host to disable autostart."
+        if [[ $# == 0 ]]; then
+            before_show_menu
+        fi
+        return 0
+    fi
     if [[ $release == "alpine" ]]; then
         rc-update del x-ui
     else
@@ -673,8 +756,31 @@ update_shell() {
     fi
 }
 
+xui_pid() {
+    ps -ef 2> /dev/null | grep -F "${xui_folder}/x-ui" | grep -v grep | awk 'NR==1 {print $1}'
+}
+
+signal_xui() {
+    local sig="$1" pid
+    pid="$(xui_pid)"
+    if [[ -z "${pid}" ]]; then
+        return 1
+    fi
+    kill -"${sig}" "${pid}" 2> /dev/null
+}
+
 # 0: running, 1: not running, 2: not installed
 check_status() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        if [[ ! -x "${xui_folder}/x-ui" ]]; then
+            return 2
+        fi
+        if [[ -n "$(xui_pid)" ]]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
     if [[ $release == "alpine" ]]; then
         if [[ ! -f /etc/init.d/x-ui ]]; then
             return 2
@@ -761,6 +867,10 @@ show_status() {
 }
 
 show_enable_status() {
+    if [[ "${running_in_docker}" == "true" ]]; then
+        echo -e "Start automatically: ${green}Managed by Docker${plain}"
+        return
+    fi
     check_enabled
     if [[ $? == 0 ]]; then
         echo -e "Start automatically: ${green}Yes${plain}"
@@ -1159,6 +1269,16 @@ ssl_cert_issue_main() {
                         echo "Panel paths set for domain: $domain"
                         echo "  - Certificate File: $webCertFile"
                         echo "  - Private Key File: $webKeyFile"
+                        # Register the acme.sh install-cert hook so auto-renewal copies the
+                        # renewed cert to these paths and reloads the panel. Without it acme.sh
+                        # renews but never updates /root/cert, silently serving a stale cert.
+                        if command -v ~/.acme.sh/acme.sh &> /dev/null && ~/.acme.sh/acme.sh --list 2> /dev/null | awk '{print $1}' | grep -Fxq "${domain}"; then
+                            ~/.acme.sh/acme.sh --installcert -d "${domain}" \
+                                --key-file "${webKeyFile}" \
+                                --fullchain-file "${webCertFile}" \
+                                --reloadcmd "x-ui restart" 2>&1 || true
+                            echo "Registered acme.sh auto-renewal hook for ${domain}."
+                        fi
                         restart
                     else
                         echo "Certificate or private key not found for domain: $domain."
@@ -1338,8 +1458,8 @@ ssl_cert_issue_for_ip() {
         LOGE "Failed to issue certificate for IP: ${server_ip}"
         LOGE "Make sure port ${WebPort} is open and the server is accessible from the internet"
         # Cleanup acme.sh data for both IPv4 and IPv6 if specified
-        rm -rf ~/.acme.sh/${server_ip} 2> /dev/null
-        [[ -n "$ipv6_addr" ]] && rm -rf ~/.acme.sh/${ipv6_addr} 2> /dev/null
+        rm -rf ~/.acme.sh/${server_ip} ~/.acme.sh/${server_ip}_ecc 2> /dev/null
+        [[ -n "$ipv6_addr" ]] && rm -rf ~/.acme.sh/${ipv6_addr} ~/.acme.sh/${ipv6_addr}_ecc 2> /dev/null
         rm -rf ${certPath} 2> /dev/null
         return 1
     else
@@ -1358,8 +1478,8 @@ ssl_cert_issue_for_ip() {
     if [[ ! -f "${certPath}/fullchain.pem" || ! -f "${certPath}/privkey.pem" ]]; then
         LOGE "Certificate files not found after installation"
         # Cleanup acme.sh data for both IPv4 and IPv6 if specified
-        rm -rf ~/.acme.sh/${server_ip} 2> /dev/null
-        [[ -n "$ipv6_addr" ]] && rm -rf ~/.acme.sh/${ipv6_addr} 2> /dev/null
+        rm -rf ~/.acme.sh/${server_ip} ~/.acme.sh/${server_ip}_ecc 2> /dev/null
+        [[ -n "$ipv6_addr" ]] && rm -rf ~/.acme.sh/${ipv6_addr} ~/.acme.sh/${ipv6_addr}_ecc 2> /dev/null
         rm -rf ${certPath} 2> /dev/null
         return 1
     fi
@@ -1466,14 +1586,30 @@ ssl_cert_issue() {
     LOGD "Your domain is: ${domain}, checking it..."
     SSL_ISSUED_DOMAIN="${domain}"
 
-    # detect existing certificate and reuse it if present
+    # detect existing certificate and reuse it only if its files are actually
+    # present and non-empty. acme.sh stores ECC certs under ${domain}_ecc and RSA
+    # certs under ${domain}; a failed issuance can leave a domain entry in --list
+    # with no usable cert files, which must not be reused (it produces a 0-byte
+    # fullchain.pem). Broken partial state is cleaned up so issuance can proceed.
     local cert_exists=0
     if ~/.acme.sh/acme.sh --list 2> /dev/null | awk '{print $1}' | grep -Fxq "${domain}"; then
-        cert_exists=1
-        local certInfo=$(~/.acme.sh/acme.sh --list 2> /dev/null | grep -F "${domain}")
-        LOGI "Existing certificate found for ${domain}, will reuse it."
-        [[ -n "${certInfo}" ]] && LOGI "${certInfo}"
-    else
+        local acmeCertDir=""
+        if [[ -s ~/.acme.sh/${domain}_ecc/fullchain.cer && -s ~/.acme.sh/${domain}_ecc/${domain}.key ]]; then
+            acmeCertDir=~/.acme.sh/${domain}_ecc
+        elif [[ -s ~/.acme.sh/${domain}/fullchain.cer && -s ~/.acme.sh/${domain}/${domain}.key ]]; then
+            acmeCertDir=~/.acme.sh/${domain}
+        fi
+        if [[ -n "${acmeCertDir}" ]]; then
+            cert_exists=1
+            local certInfo=$(~/.acme.sh/acme.sh --list 2> /dev/null | grep -F "${domain}")
+            LOGI "Existing certificate found for ${domain}, will reuse it."
+            [[ -n "${certInfo}" ]] && LOGI "${certInfo}"
+        else
+            LOGW "Found incomplete acme.sh state for ${domain} (no valid certificate files); cleaning it up and re-issuing."
+            rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
+        fi
+    fi
+    if [[ ${cert_exists} -eq 0 ]]; then
         LOGI "Your domain is ready for issuing certificates now..."
     fi
 
@@ -1501,7 +1637,7 @@ ssl_cert_issue() {
         ~/.acme.sh/acme.sh --issue -d ${domain} --listen-v6 --standalone --httpport ${WebPort} --force
         if [ $? -ne 0 ]; then
             LOGE "Issuing certificate failed, please check logs."
-            rm -rf ~/.acme.sh/${domain}
+            rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
             exit 1
         else
             LOGE "Issuing certificate succeeded, installing certificates..."
@@ -1554,7 +1690,7 @@ ssl_cert_issue() {
     else
         LOGE "Installing certificate failed, exiting."
         if [[ ${cert_exists} -eq 0 ]]; then
-            rm -rf ~/.acme.sh/${domain}
+            rm -rf ~/.acme.sh/${domain} ~/.acme.sh/${domain}_ecc
         fi
         exit 1
     fi
@@ -2138,6 +2274,18 @@ failregex   = \[LIMIT_IP\]\s*Email\s*=\s*<F-USER>.+</F-USER>\s*\|\|\s*Disconnect
 ignoreregex =
 EOF
 
+    # Ports to exempt from the ban so an over-limit proxy client can never lock
+    # the administrator out of SSH or the panel. The ban still covers every other
+    # TCP port (including all Xray inbounds), so IP-limit keeps working for inbounds
+    # added later without regenerating these files.
+    local ssh_ports
+    ssh_ports=$(grep -oP '^[[:space:]]*Port[[:space:]]+\K[0-9]+' /etc/ssh/sshd_config 2>/dev/null | paste -sd, -)
+    [[ -z "${ssh_ports}" ]] && ssh_ports="22"
+    local panel_port
+    panel_port=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep -Eo 'port: .+' | awk '{print $2}')
+    local exempt_ports="${ssh_ports}"
+    [[ -n "${panel_port}" ]] && exempt_ports="${exempt_ports},${panel_port}"
+
     cat << EOF > /etc/fail2ban/action.d/3x-ipl.conf
 [INCLUDES]
 before = iptables-allports.conf
@@ -2153,16 +2301,17 @@ actionstop = <iptables> -D <chain> -p <protocol> -j f2b-<name>
 
 actioncheck = <iptables> -n -L <chain> | grep -q 'f2b-<name>[ \t]'
 
-actionban = <iptables> -I f2b-<name> 1 -s <ip> -j <blocktype>
+actionban = <iptables> -I f2b-<name> 1 -s <ip> -p <protocol> -m multiport ! --dports <exemptports> -j <blocktype>
             echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   BAN   [Email] = <F-USER> [IP] = <ip> banned for <bantime> seconds." >> ${iplimit_banned_log_path}
 
-actionunban = <iptables> -D f2b-<name> -s <ip> -j <blocktype>
+actionunban = <iptables> -D f2b-<name> -s <ip> -p <protocol> -m multiport ! --dports <exemptports> -j <blocktype>
               echo "\$(date +"%%Y/%%m/%%d %%H:%%M:%%S")   UNBAN   [Email] = <F-USER> [IP] = <ip> unbanned." >> ${iplimit_banned_log_path}
 
 [Init]
 name = default
 protocol = tcp
 chain = INPUT
+exemptports = ${exempt_ports}
 EOF
 
     echo -e "${green}Ip Limit jail files created with a bantime of ${bantime} minutes.${plain}"
@@ -2580,7 +2729,7 @@ migrate_to_postgres() {
     echo ""
     echo -e "${yellow}This copies your current SQLite data into a PostgreSQL database,${plain}"
     echo -e "${yellow}then switches the panel to PostgreSQL and restarts it.${plain}"
-    echo -e "${yellow}The destination PostgreSQL database must be empty.${plain}"
+    echo -e "${red}Any existing panel tables in the destination will be cleared and overwritten.${plain}"
     confirm "Continue?" "n" || return 0
 
     local dsn="" pg_mode
