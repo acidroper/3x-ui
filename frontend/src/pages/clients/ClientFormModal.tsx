@@ -256,6 +256,21 @@ export default function ClientFormModal({
     return ids;
   }, [inbounds]);
 
+  const ss2022Method = useMemo(() => {
+    for (const id of form.inboundIds || []) {
+      const ib = (inbounds || []).find((row) => row.id === id);
+      const method = ib?.ssMethod;
+      if (method && method.substring(0, 4) === '2022') return method;
+    }
+    return '';
+  }, [form.inboundIds, inbounds]);
+
+  function regeneratePassword() {
+    update('password', ss2022Method
+      ? RandomUtil.randomShadowsocksPassword(ss2022Method)
+      : RandomUtil.randomLowerAndNum(16));
+  }
+
   const showFlow = useMemo(
     () => (form.inboundIds || []).some((id) => flowCapableIds.has(id)),
     [form.inboundIds, flowCapableIds],
@@ -305,6 +320,15 @@ export default function ClientFormModal({
       update('xmuxOverride', { ...form.xmuxOverride, enabled: false });
     }
   }, [showXmuxOverride, form.xmuxOverride]);
+
+  useEffect(() => {
+    if (!ss2022Method) return;
+    setForm((prev) => (
+      RandomUtil.isShadowsocks2022Password(prev.password, ss2022Method)
+        ? prev
+        : { ...prev, password: RandomUtil.randomShadowsocksPassword(ss2022Method) }
+    ));
+  }, [ss2022Method]);
 
   const inboundOptions = useMemo(
     () => (inbounds || [])
@@ -484,7 +508,7 @@ export default function ClientFormModal({
               <Form.Item label={t('pages.clients.password')}>
                 <Space.Compact style={{ display: 'flex' }}>
                   <Input value={form.password} style={{ flex: 1 }} onChange={(e) => update('password', e.target.value)} />
-                  <Button icon={<ReloadOutlined />} onClick={() => update('password', RandomUtil.randomLowerAndNum(16))} />
+                  <Button icon={<ReloadOutlined />} onClick={regeneratePassword} />
                 </Space.Compact>
               </Form.Item>
             </Col>
