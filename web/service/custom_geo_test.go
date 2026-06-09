@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/mhsanaei/3x-ui/v3/database/model"
 )
 
 // disableSSRFCheck disables the SSRF guard for the duration of a test,
@@ -322,7 +322,7 @@ func TestProbeCustomGeoURL_HEADOK(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
-	if err := probeCustomGeoURL(ts.URL); err != nil {
+	if err := (&CustomGeoService{}).probeCustomGeoURL(ts.URL); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -342,7 +342,7 @@ func TestProbeCustomGeoURL_HEAD405GETRange(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer ts.Close()
-	if err := probeCustomGeoURL(ts.URL); err != nil {
+	if err := (&CustomGeoService{}).probeCustomGeoURL(ts.URL); err != nil {
 		t.Fatal(err)
 	}
 }
